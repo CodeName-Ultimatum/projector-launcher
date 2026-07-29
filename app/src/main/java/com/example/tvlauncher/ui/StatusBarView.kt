@@ -5,14 +5,17 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
+import android.graphics.PorterDuff
+import android.net.wifi.WifiManager
 import android.text.format.DateFormat
 import android.util.AttributeSet
 import android.view.Gravity
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import com.example.tvlauncher.R
 import com.example.tvlauncher.util.dpToPx
-import com.example.tvlauncher.util.getWifiSignalLevel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -23,7 +26,7 @@ class StatusBarView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : LinearLayout(context, attrs, defStyleAttr) {
 
-    private val wifiText: TextView
+    private val wifiIcon: ImageView
     private val dateText: TextView
     private val weekdayText: TextView
     private val timeText: TextClock
@@ -32,7 +35,7 @@ class StatusBarView @JvmOverloads constructor(
     private val tickReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_TIME_TICK ||
-                intent?.action == android.net.wifi.WifiManager.RSSI_CHANGED_ACTION
+                intent?.action == WifiManager.RSSI_CHANGED_ACTION
             ) {
                 updateDateAndWeekday()
                 updateWifi()
@@ -46,7 +49,7 @@ class StatusBarView @JvmOverloads constructor(
         setBackgroundColor(Color.parseColor("#CC1A1A2E"))
         setPadding(context.dpToPx(12), 0, context.dpToPx(12), 0)
 
-        // Left icon placeholder
+        // 左侧图标占位
         val leftIcon = TextView(context).apply {
             text = ""
             setTextColor(Color.WHITE)
@@ -55,21 +58,26 @@ class StatusBarView @JvmOverloads constructor(
         }
         addView(leftIcon)
 
-        // WiFi signal
-        wifiText = TextView(context).apply {
-            setTextColor(Color.WHITE)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11f)
-            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = context.dpToPx(16)
+        // WiFi 图标（替换原来的文字）
+        wifiIcon = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN)
+            layoutParams = LayoutParams(
+                context.dpToPx(20), context.dpToPx(20)
+            ).apply {
+                rightMargin = context.dpToPx(8)
+                gravity = Gravity.CENTER_VERTICAL
             }
         }
-        addView(wifiText)
+        addView(wifiIcon)
 
-        // Right-side time group (vertical)
+        // 时间：水平排列（TextClock | 星期 | 日期）
         val timeGroup = LinearLayout(context).apply {
-            orientation = VERTICAL
-            gravity = Gravity.END
-            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+            )
         }
 
         timeText = TextClock(context).apply {
@@ -77,24 +85,30 @@ class StatusBarView @JvmOverloads constructor(
             format24Hour = "HH:mm"
             setTextColor(Color.WHITE)
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
-            gravity = Gravity.END
+            gravity = Gravity.CENTER_VERTICAL
         }
+        timeGroup.addView(timeText)
 
         weekdayText = TextView(context).apply {
             setTextColor(Color.parseColor("#CCFFFFFF"))
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10f)
-            gravity = Gravity.END
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+            ).apply { leftMargin = context.dpToPx(8) }
         }
+        timeGroup.addView(weekdayText)
 
         dateText = TextView(context).apply {
             setTextColor(Color.parseColor("#CCFFFFFF"))
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10f)
-            gravity = Gravity.END
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+            ).apply { leftMargin = context.dpToPx(8) }
         }
-
-        timeGroup.addView(timeText)
-        timeGroup.addView(weekdayText)
         timeGroup.addView(dateText)
+
         addView(timeGroup)
     }
 
@@ -103,7 +117,7 @@ class StatusBarView @JvmOverloads constructor(
         updateWifi()
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_TIME_TICK)
-            addAction(android.net.wifi.WifiManager.RSSI_CHANGED_ACTION)
+            addAction(WifiManager.RSSI_CHANGED_ACTION)
         }
         context.registerReceiver(tickReceiver, filter)
         receiverRegistered = true
@@ -127,14 +141,28 @@ class StatusBarView @JvmOverloads constructor(
     }
 
     private fun updateWifi() {
-        val level = context.getWifiSignalLevel()
-        val bars = when (level) {
-            0 -> "○"
-            1 -> "◔"
-            2 -> "◑"
-            3 -> "◕"
-            else -> "●"
+        val wifiManager = context.applicationContext
+            .getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val wifiInfo = wifiManager?.connectionInfo
+        val isConnected = wifiInfo != null && wifiInfo.networkId != -1
+
+        if (!isConnected) {
+            wifiIcon.setImageResource(R.drawable.ic_wifi_0)
+            wifiIcon.setColorFilter(
+                Color.parseColor("#66FFFFFF"),
+                PorterDuff.Mode.SRC_IN
+            )
+        } else {
+            val level = WifiManager.calculateSignalLevel(wifiInfo!!.rssi, 5)
+            val iconRes = when (level) {
+                0 -> R.drawable.ic_wifi_0
+                1 -> R.drawable.ic_wifi_1
+                2 -> R.drawable.ic_wifi_2
+                3 -> R.drawable.ic_wifi_3
+                else -> R.drawable.ic_wifi_4
+            }
+            wifiIcon.setImageResource(iconRes)
+            wifiIcon.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN)
         }
-        wifiText.text = "WiFi $bars"
     }
 }
