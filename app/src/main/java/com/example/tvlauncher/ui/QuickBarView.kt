@@ -32,7 +32,6 @@ class QuickBarView @JvmOverloads constructor(
     var onAddRequested: (() -> Unit)? = null
 
     init {
-        setBackgroundColor(Color.parseColor("#CC0D1117"))
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
         isFocusable = false

@@ -4,15 +4,6 @@
     android:layout_height="match_parent"
     android:background="@color/main_bg">
 
-    <!--第 0 层：全屏背景底图（10% alpha）-->
-    <ImageView
-        android:id="@+id/global_bg"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:src="@drawable/bg_full"
-        android:scaleType="centerCrop"
-        android:alpha="0.1" />
-
     <!--主内容区（正常层级）-->
     <LinearLayout
         android:id="@+id/root_layout"
@@ -20,71 +11,30 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <!--状态栏：以代码方式添加-->
+        <!--状态栏：以代码方式添加（无背景）-->
         <FrameLayout
             android:id="@+id/status_bar_container"
             android:layout_width="match_parent"
             android:layout_height="@dimen/status_bar_height" />
 
-        <!--主内容区-->
+        <!--主内容区：左右上下各缩进36dp-->
         <LinearLayout
             android:id="@+id/main_content"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
+            android:layout_marginLeft="36dp"
+            android:layout_marginRight="36dp"
+            android:layout_marginTop="36dp"
+            android:layout_marginBottom="36dp"
             android:orientation="horizontal">
 
-            <!--左侧 IVI 面板：1/4 宽度，可获焦-->
+            <!--左侧 IVI 卡片占位容器：1/4 宽度，由代码创建 LauncherCardView-->
             <FrameLayout
-                android:id="@+id/ivi_panel"
+                android:id="@+id/ivi_container"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:descendantFocusability="blocksDescendants">
-
-                <!--IVI 背景图块（代码设置 ImageView src）-->
-                <ImageView
-                    android:id="@+id/ivi_bg"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:scaleType="centerCrop"
-                    android:alpha="0.15" />
-
-                <!--IVI 叠加层-->
-                <View
-                    android:id="@+id/ivi_overlay"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:background="@color/ivi_overlay" />
-
-                <!--IVI 内容：图标 + 名称-->
-                <LinearLayout
-                    android:id="@+id/ivi_content"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:orientation="vertical"
-                    android:gravity="center">
-
-                    <ImageView
-                        android:id="@+id/ivi_app_icon"
-                        android:layout_width="@dimen/ivi_icon_size"
-                        android:layout_height="@dimen/ivi_icon_size"
-                        android:src="@drawable/ic_ivi"
-                        android:scaleType="fitCenter" />
-
-                    <TextView
-                        android:id="@+id/ivi_app_label"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/ivi_label"
-                        android:textColor="@color/text_primary"
-                        android:textSize="@dimen/ivi_text_size"
-                        android:layout_marginTop="6dp" />
-                </LinearLayout>
-            </FrameLayout>
+                android:layout_weight="1" />
 
             <!--右侧卡片网格：3/4 宽度-->
             <LinearLayout
@@ -123,7 +73,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!--底部快捷栏-->
+        <!--底部快捷栏：以代码方式添加（无背景）-->
         <FrameLayout
             android:id="@+id/quick_bar_container"
             android:layout_width="match_parent"

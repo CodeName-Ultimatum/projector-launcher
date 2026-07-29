@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <dimen name="status_bar_height">32dp</dimen>
-    <dimen name="quick_bar_height">52dp</dimen>
+    <dimen name="status_bar_height">44dp</dimen>
+    <dimen name="quick_bar_height">72dp</dimen>
     <dimen name="card_gap_horizontal">8dp</dimen>
     <dimen name="card_gap_vertical">8dp</dimen>
     <dimen name="card_icon_tall">48dp</dimen>

@@ -5,9 +5,7 @@ import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
-import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -18,8 +16,6 @@ import com.example.tvlauncher.ui.QuickBarView
 import com.example.tvlauncher.ui.StatusBarView
 import com.example.tvlauncher.util.BackgroundCutter
 import com.example.tvlauncher.util.dpToPx
-import com.example.tvlauncher.util.setFocusZoom
-import com.example.tvlauncher.util.setSafeOnClickListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -33,11 +29,8 @@ class MainActivity : AppCompatActivity() {
     private var backgroundCutter: BackgroundCutter? = null
     private val cardViews = mutableListOf<LauncherCardView>()
 
-    // IVI panel views
-    private lateinit var iviPanel: View
-    private lateinit var iviBg: ImageView
-    private lateinit var iviAppIcon: ImageView
-    private lateinit var iviAppLabel: TextView
+    // IVI card
+    private lateinit var iviCard: LauncherCardView
 
     // App assignment
     private var iviAppInfo: AppRepository.AppInfo? = null
@@ -85,7 +78,7 @@ class MainActivity : AppCompatActivity() {
         statusBar = StatusBarView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(32)
+                dpToPx(44)
             )
         }
         val container = findViewById<View>(R.id.status_bar_container)
@@ -120,20 +113,17 @@ class MainActivity : AppCompatActivity() {
     // ─── IVI Panel ─────────────────────────────────────────────
 
     private fun setupIviPanel() {
-        iviPanel = findViewById(R.id.ivi_panel)
-        iviBg = findViewById(R.id.ivi_bg)
-        iviAppIcon = findViewById(R.id.ivi_app_icon)
-        iviAppLabel = findViewById(R.id.ivi_app_label)
-
-        iviPanel.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) {
-                iviPanel.setFocusZoom(1.05f)
-            } else {
-                iviPanel.setFocusZoom(1.0f)
-            }
+        iviCard = LauncherCardView(this).apply {
+            id = View.generateViewId()
+            setIconLayout(iconAbove = true)
+            setAppInfo(null)
+            // Default IVI label
+            setLabel(getString(R.string.ivi_label))
+            // Warm orange overlay
+            setOverlayColor(getColor(R.color.ivi_overlay))
         }
 
-        iviPanel.setSafeOnClickListener {
+        iviCard.onCardClicked = {
             if (iviAppInfo != null) {
                 val intent = packageManager.getLaunchIntentForPackage(iviAppInfo!!.packageName)
                 if (intent != null) {
@@ -145,6 +135,15 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, R.string.ivi_not_installed, Toast.LENGTH_SHORT).show()
             }
         }
+
+        val container = findViewById<View>(R.id.ivi_container)
+        (container as android.widget.FrameLayout).addView(
+            iviCard,
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
     }
 
     // ─── Card Building ─────────────────────────────────────────────
@@ -215,11 +214,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadAppsAndBackground() {
         val rightPanel = findViewById<View>(R.id.right_panel)
+        val iviContainer = findViewById<View>(R.id.ivi_container)
         val mainContent = findViewById<View>(R.id.main_content)
 
         mainContent.post {
             val contentHeight = mainContent.height
-            val iviW = iviPanel.width
+            val iviW = iviContainer.width
             val rightW = rightPanel.width
 
             if (contentHeight <= 0 || iviW <= 0 || rightW <= 0) {
@@ -245,7 +245,7 @@ class MainActivity : AppCompatActivity() {
                 if (youtube != null) boundCardPackages.add(youtube.packageName)
                 if (googlePlay != null) boundCardPackages.add(googlePlay.packageName)
 
-                // Cut background tiles
+                // Cut background tiles (9 tiles: 0=IVI, 1-8=right panel cards)
                 val cutter = withContext(Dispatchers.IO) {
                     try {
                         val src = BitmapFactory.decodeResource(resources, R.drawable.bg_full)
@@ -265,9 +265,9 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     if (cutter != null) {
                         backgroundCutter = cutter
-                        // Set IVI background (tile 0)
+                        // Set IVI card background (tile 0)
                         val iviTile = cutter.getTile(0)
-                        iviBg.setImageBitmap(iviTile)
+                        iviCard.setCardBackground(iviTile)
 
                         // Set card backgrounds (tiles 1-8 map to cardViews[0-7])
                         for (i in 1..8) {
@@ -279,10 +279,9 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    // Update IVI panel content
+                    // Update IVI card content
                     if (iviApp != null) {
-                        iviAppIcon.setImageDrawable(iviApp.icon)
-                        iviAppLabel.text = iviApp.label
+                        iviCard.setAppInfo(iviApp)
                     }
 
                     // Assign apps to top/middle cards
@@ -413,11 +412,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupFocusNavigation() {
         // IVI ↔ top row card 1 (cardViews[0] = LazyMedia)
-        iviPanel.nextFocusRightId = cardViews[0].id
-        cardViews[0].nextFocusLeftId = iviPanel.id
+        iviCard.nextFocusRightId = cardViews[0].id
+        cardViews[0].nextFocusLeftId = iviCard.id
 
         // IVI ↔ middle row card 1 (cardViews[3] = Google Play)
-        cardViews[3].nextFocusLeftId = iviPanel.id
+        cardViews[3].nextFocusLeftId = iviCard.id
     }
 
     // ─── System Functions ─────────────────────────────────────────
@@ -511,8 +510,7 @@ class MainActivity : AppCompatActivity() {
             val iviApp = withContext(Dispatchers.IO) { findIviApp() }
             iviAppInfo = iviApp
             if (iviApp != null) {
-                iviAppIcon.setImageDrawable(iviApp.icon)
-                iviAppLabel.text = iviApp.label
+                iviCard.setAppInfo(iviApp)
             }
 
             // Rebuild bound packages exclusion set

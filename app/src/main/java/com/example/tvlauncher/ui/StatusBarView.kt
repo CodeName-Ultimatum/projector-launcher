@@ -46,7 +46,6 @@ class StatusBarView @JvmOverloads constructor(
     init {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setBackgroundColor(Color.parseColor("#CC1A1A2E"))
         setPadding(context.dpToPx(12), 0, context.dpToPx(12), 0)
 
         // 左侧图标占位
