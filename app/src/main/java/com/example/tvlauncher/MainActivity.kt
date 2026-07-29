@@ -78,7 +78,7 @@ class MainActivity : AppCompatActivity() {
         statusBar = StatusBarView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(44)
+                LinearLayout.LayoutParams.MATCH_PARENT
             )
         }
         val container = findViewById<View>(R.id.status_bar_container)
@@ -120,7 +120,11 @@ class MainActivity : AppCompatActivity() {
             // Default IVI label
             setLabel(getString(R.string.ivi_label))
             // Warm orange overlay
-            setOverlayColor(getColor(R.color.ivi_overlay))
+            setOverlayGradient(
+                getColor(R.color.ivi_overlay_start),
+                getColor(R.color.ivi_overlay_end),
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR
+            )
         }
 
         iviCard.onCardClicked = {
@@ -375,24 +379,24 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyOverlays() {
         val orientations = listOf(
-            null,
-            null,
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-            null,
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            null,
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
         )
 
         val colors = listOf(
-            listOf(getColor(R.color.card_overlay_1)),
-            listOf(getColor(R.color.card_overlay_2)),
+            listOf(getColor(R.color.card_overlay_1_start), getColor(R.color.card_overlay_1_end)),
+            listOf(getColor(R.color.card_overlay_2_start), getColor(R.color.card_overlay_2_end)),
             listOf(getColor(R.color.card_overlay_3_start), getColor(R.color.card_overlay_3_end)),
             listOf(getColor(R.color.card_overlay_4_start), getColor(R.color.card_overlay_4_end)),
-            listOf(getColor(R.color.card_overlay_5)),
+            listOf(getColor(R.color.card_overlay_5_start), getColor(R.color.card_overlay_5_end)),
             listOf(getColor(R.color.card_overlay_6_start), getColor(R.color.card_overlay_6_end)),
-            listOf(getColor(R.color.card_overlay_7)),
+            listOf(getColor(R.color.card_overlay_7_start), getColor(R.color.card_overlay_7_end)),
             listOf(getColor(R.color.card_overlay_8_start), getColor(R.color.card_overlay_8_end))
         )
 

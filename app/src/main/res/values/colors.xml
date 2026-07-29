@@ -1,26 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="status_bar_bg">#CC1A1A2E</color>
-    <color name="main_bg">#FF1A1A1A</color>
+    <color name="main_bg">#FF000099</color>
     <color name="text_primary">#FFFFFFFF</color>
     <color name="text_secondary">#B3FFFFFF</color>
-    <!--卡片叠加层：alpha 50%(#80)-->
-    <color name="card_overlay_1">#8026405C</color>
-    <color name="card_overlay_2">#802D5A4B</color>
-    <color name="card_overlay_3_start">#803A4A6B</color>
-    <color name="card_overlay_3_end">#801E3040</color>
-    <color name="card_overlay_4_start">#802E3D4F</color>
-    <color name="card_overlay_4_end">#801A2836</color>
-    <color name="card_overlay_5">#803B2E3F</color>
-    <color name="card_overlay_6_start">#802C4048</color>
-    <color name="card_overlay_6_end">#801E2D33</color>
-    <color name="card_overlay_7">#80334155</color>
-    <color name="card_overlay_8_start">#802A3A42</color>
-    <color name="card_overlay_8_end">#801F2C34</color>
+    <!--卡片叠加层：alpha 70%(#B3)，渐变明显，避开蓝色/青色系-->
+    <color name="card_overlay_1_start">#B3FF6B6B</color>
+    <color name="card_overlay_1_end">#B3FF8E53</color>
+    <color name="card_overlay_2_start">#B3E040FB</color>
+    <color name="card_overlay_2_end">#B3FF4081</color>
+    <color name="card_overlay_3_start">#B3E040FB</color>
+    <color name="card_overlay_3_end">#B3FF4081</color>
+    <color name="card_overlay_4_start">#B3FFD600</color>
+    <color name="card_overlay_4_end">#B3FF6D00</color>
+    <color name="card_overlay_5_start">#B3FFD600</color>
+    <color name="card_overlay_5_end">#B3FFAB00</color>
+    <color name="card_overlay_6_start">#B300FA9A</color>
+    <color name="card_overlay_6_end">#B398FB98</color>
+    <color name="card_overlay_7_start">#B3FFD600</color>
+    <color name="card_overlay_7_end">#B3FF6D00</color>
+    <color name="card_overlay_8_start">#B3E040FB</color>
+    <color name="card_overlay_8_end">#B3FF4081</color>
     <color name="quick_bar_bg">#CC0D1117</color>
     <color name="add_button_bg">#33334455</color>
-    <color name="card_focused_border">#80FFFFFF</color>
-    <!--新增颜色-->
-    <color name="ivi_overlay">#80CC7000</color>
+    <color name="card_focused_border">#FFFFFFFF</color>
+    <!--IVI：珊瑚橙 渐变-->
+    <color name="ivi_overlay_start">#B3FF6B6B</color>
+    <color name="ivi_overlay_end">#B3FF8E53</color>
     <color name="wifi_icon_disconnected">#66FFFFFF</color>
+    <color name="status_bar_bg_light">#FFFFFFFF</color>
 </resources>

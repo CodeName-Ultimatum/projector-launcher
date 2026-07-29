@@ -1,23 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    主布局文件 — TV Launcher 首页
+    结构：FrameLayout（根）
+        ├── LinearLayout（垂直，撑满全屏）
+        │   ├── FrameLayout（状态栏容器，120dp）
+        │   ├── LinearLayout（主内容区，weight=1，四周缩进36dp）
+        │   │   ├── FrameLayout（IVI卡片容器，1/4宽）
+        │   │   └── LinearLayout（右侧卡片网格，3/4宽）
+        │   │       ├── row_top（上排3张竖卡，等权重）
+        │   │       ├── row_middle（中排2张横卡，上下有8dp间隙）
+        │   │       └── row_bottom（下排3张固定功能卡片）
+        │   └── FrameLayout（快捷栏容器，140dp）
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/main_bg">
 
-    <!--主内容区（正常层级）-->
+    <!--外层垂直布局，将屏幕分为 状态栏 / 内容区 / 快捷栏 三段-->
     <LinearLayout
         android:id="@+id/root_layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <!--状态栏：以代码方式添加（无背景）-->
+        <!--
+            状态栏容器
+            实际内容由 StatusBarView 代码动态添加
+            高度固定120dp，无背景颜色
+        -->
         <FrameLayout
             android:id="@+id/status_bar_container"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/status_bar_height" />
+            android:layout_height="120dp" />
 
-        <!--主内容区：左右上下各缩进36dp-->
+        <!--
+            主内容区 — IVI面板 + 卡片网格
+            layout_weight=1 占据状态栏和快捷栏之间的全部剩余空间
+            四周 margin 36dp 使内容区与屏幕边缘产生留白
+        -->
         <LinearLayout
             android:id="@+id/main_content"
             android:layout_width="match_parent"
@@ -29,14 +50,21 @@
             android:layout_marginBottom="36dp"
             android:orientation="horizontal">
 
-            <!--左侧 IVI 卡片占位容器：1/4 宽度，由代码创建 LauncherCardView-->
+            <!--
+                IVI卡片容器（左侧 1/4）
+                实际卡片由 MainActivity 代码创建 LauncherCardView 并添加到此容器
+            -->
             <FrameLayout
                 android:id="@+id/ivi_container"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1" />
 
-            <!--右侧卡片网格：3/4 宽度-->
+            <!--
+                右侧卡片网格（3/4）
+                三行布局：上排3卡 / 中排2卡 / 下排3卡
+                每行 height=0dp + weight=1 均分高度
+            -->
             <LinearLayout
                 android:id="@+id/right_panel"
                 android:layout_width="0dp"
@@ -45,7 +73,7 @@
                 android:orientation="vertical"
                 android:padding="0dp">
 
-                <!--上排：3 张卡片-->
+                <!--上排：3张竖卡（iconAbove模式下显示）-->
                 <LinearLayout
                     android:id="@+id/row_top"
                     android:layout_width="match_parent"
@@ -53,7 +81,7 @@
                     android:layout_weight="1"
                     android:orientation="horizontal" />
 
-                <!--中排：包含水平和垂直间隙-->
+                <!--中排：2张横卡（iconAbove=false），上下有8dp间隙-->
                 <LinearLayout
                     android:id="@+id/row_middle"
                     android:layout_width="match_parent"
@@ -63,7 +91,7 @@
                     android:layout_marginTop="@dimen/card_gap_vertical"
                     android:layout_marginBottom="@dimen/card_gap_vertical" />
 
-                <!--下排：3 张固定功能卡片-->
+                <!--下排：3张系统功能卡（应用列表/设置/文件管理）-->
                 <LinearLayout
                     android:id="@+id/row_bottom"
                     android:layout_width="match_parent"
@@ -73,11 +101,15 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!--底部快捷栏：以代码方式添加（无背景）-->
+        <!--
+            快捷栏容器
+            实际内容由 QuickBarView 代码动态添加
+            高度固定140dp，水平滚动，无背景颜色
+        -->
         <FrameLayout
             android:id="@+id/quick_bar_container"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/quick_bar_height" />
+            android:layout_height="140dp" />
 
     </LinearLayout>
 </FrameLayout>

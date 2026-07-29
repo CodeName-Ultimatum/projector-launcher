@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <dimen name="status_bar_height">44dp</dimen>
-    <dimen name="quick_bar_height">72dp</dimen>
+    <dimen name="status_bar_height">56dp</dimen>
+    <dimen name="quick_bar_height">80dp</dimen>
     <dimen name="card_gap_horizontal">8dp</dimen>
     <dimen name="card_gap_vertical">8dp</dimen>
-    <dimen name="card_icon_tall">48dp</dimen>
-    <dimen name="card_icon_wide">40dp</dimen>
-    <dimen name="ivi_icon_size">64dp</dimen>
-    <dimen name="card_text_size">12sp</dimen>
-    <dimen name="ivi_text_size">14sp</dimen>
+    <dimen name="card_icon_tall">56dp</dimen>
+    <dimen name="card_icon_wide">48dp</dimen>
+    <dimen name="ivi_icon_size">72dp</dimen>
+    <dimen name="card_text_size">14sp</dimen>
+    <dimen name="ivi_text_size">16sp</dimen>
     <dimen name="quick_item_width">96dp</dimen>
-    <dimen name="quick_item_text_size">11sp</dimen>
-    <dimen name="status_text_size">10sp</dimen>
-    <dimen name="status_time_size">14sp</dimen>
+    <dimen name="quick_item_text_size">13sp</dimen>
+    <dimen name="status_text_size">12sp</dimen>
+    <dimen name="status_time_size">18sp</dimen>
     <dimen name="focus_scale">1.06</dimen>
 </resources>

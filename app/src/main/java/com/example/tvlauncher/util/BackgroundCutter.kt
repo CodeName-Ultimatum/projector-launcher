@@ -26,7 +26,7 @@ class BackgroundCutter(
         val srcRect = RectF(0f, 0f, sourceBitmap.width.toFloat(), sourceBitmap.height.toFloat())
         val dstRect = RectF(0f, 0f, totalWidth.toFloat(), contentHeight.toFloat())
         val matrix = Matrix()
-        matrix.setRectToRect(srcRect, dstRect, Matrix.ScaleToFit.CENTER)
+        matrix.setRectToRect(srcRect, dstRect, Matrix.ScaleToFit.FILL)
         scaledBitmap = Bitmap.createBitmap(
             sourceBitmap, 0, 0,
             sourceBitmap.width, sourceBitmap.height, matrix, true
