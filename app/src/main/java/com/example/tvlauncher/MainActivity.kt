@@ -507,6 +507,14 @@ class MainActivity : AppCompatActivity() {
                 appRepo.getInstalledLaunchableApps()
             }
 
+            // Refresh IVI app state (may have been installed/uninstalled)
+            val iviApp = withContext(Dispatchers.IO) { findIviApp() }
+            iviAppInfo = iviApp
+            if (iviApp != null) {
+                iviAppIcon.setImageDrawable(iviApp.icon)
+                iviAppLabel.text = iviApp.label
+            }
+
             // Rebuild bound packages exclusion set
             boundCardPackages.clear()
             boundCardPackages.add(packageName)
