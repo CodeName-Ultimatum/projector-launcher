@@ -5,7 +5,9 @@ import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -16,6 +18,9 @@ import com.example.tvlauncher.ui.QuickBarView
 import com.example.tvlauncher.ui.StatusBarView
 import com.example.tvlauncher.util.BackgroundCutter
 import com.example.tvlauncher.util.dpToPx
+import com.example.tvlauncher.util.setFocusZoom
+import com.example.tvlauncher.util.setSafeOnClickListener
+import com.example.tvlauncher.util.setSafeOnLongClickListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,9 +34,37 @@ class MainActivity : AppCompatActivity() {
     private var backgroundCutter: BackgroundCutter? = null
     private val cardViews = mutableListOf<LauncherCardView>()
 
-    // Fixed function card indices in cardViews list
-    // Indices: 0-2 top row, 3-4 middle row, 5-7 bottom row
-    private val bottomCardIndices = listOf(5, 6, 7)
+    // IVI panel views
+    private lateinit var iviPanel: View
+    private lateinit var iviBg: ImageView
+    private lateinit var iviAppIcon: ImageView
+    private lateinit var iviAppLabel: TextView
+
+    // App assignment
+    private var iviAppInfo: AppRepository.AppInfo? = null
+    private val boundCardPackages = mutableSetOf<String>()
+
+    companion object {
+        const val PKG_LAZYMEDIA = "com.lazymedia.deluxe"
+        const val PKG_YOUTUBE = "com.google.android.youtube.tv"
+        const val PKG_GOOGLE_PLAY = "com.android.vending"
+
+        val IVI_CANDIDATE_PACKAGES = listOf(
+            "ru.ivi.client",
+            "ru.ivi.client.tv"
+        )
+
+        val SYSTEM_CARD_LABELS = listOf(
+            R.string.app_list,
+            R.string.settings,
+            R.string.file_manager
+        )
+        val SYSTEM_CARD_ICONS = listOf(
+            R.drawable.ic_app_list,
+            R.drawable.ic_settings,
+            R.drawable.ic_file_manager
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,9 +75,12 @@ class MainActivity : AppCompatActivity() {
 
         setupStatusBar()
         setupQuickBar()
+        setupIviPanel()
         buildCards()
-        loadBackground()
+        loadAppsAndBackground()
     }
+
+    // ─── Status Bar ───────────────────────────────────────────────
 
     private fun setupStatusBar() {
         statusBar = StatusBarView(this).apply {
@@ -56,6 +92,8 @@ class MainActivity : AppCompatActivity() {
         val container = findViewById<View>(R.id.status_bar_container)
         (container as android.widget.FrameLayout).addView(statusBar)
     }
+
+    // ─── Quick Bar ───────────────────────────────────────────────
 
     private fun setupQuickBar() {
         quickBar = QuickBarView(this).apply {
@@ -80,12 +118,44 @@ class MainActivity : AppCompatActivity() {
         (container as android.widget.FrameLayout).addView(quickBar)
     }
 
+    // ─── IVI Panel ─────────────────────────────────────────────
+
+    private fun setupIviPanel() {
+        iviPanel = findViewById(R.id.ivi_panel)
+        iviBg = findViewById(R.id.ivi_bg)
+        iviAppIcon = findViewById(R.id.ivi_app_icon)
+        iviAppLabel = findViewById(R.id.ivi_app_label)
+
+        iviPanel.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                iviPanel.setFocusZoom(1.05f)
+            } else {
+                iviPanel.setFocusZoom(1.0f)
+            }
+        }
+
+        iviPanel.setSafeOnClickListener {
+            if (iviAppInfo != null) {
+                val intent = packageManager.getLaunchIntentForPackage(iviAppInfo!!.packageName)
+                if (intent != null) {
+                    startActivity(intent)
+                } else {
+                    Toast.makeText(this, "应用无法启动", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, R.string.ivi_not_installed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // ─── Card Building ─────────────────────────────────────────────
+
     private fun buildCards() {
         val rowTop = findViewById<LinearLayout>(R.id.row_top)
         val rowMiddle = findViewById<LinearLayout>(R.id.row_middle)
         val rowBottom = findViewById<LinearLayout>(R.id.row_bottom)
 
-        // Top row: 3 tall cards (1/3 width each)
+        // Top row: 3 tall cards
         for (i in 0 until 3) {
             val card = createCard(isWide = false)
             rowTop.addView(
@@ -96,7 +166,7 @@ class MainActivity : AppCompatActivity() {
                 })
         }
 
-        // Middle row: 2 wide cards (1/2 width each)
+        // Middle row: 2 wide cards
         for (i in 0 until 2) {
             val card = createCard(isWide = true)
             rowMiddle.addView(
@@ -107,16 +177,11 @@ class MainActivity : AppCompatActivity() {
                 })
         }
 
-        // Bottom row: 3 fixed-function cards
-        val bottomLabels = listOf(
-            getString(R.string.app_list),
-            getString(R.string.settings),
-            getString(R.string.file_manager)
-        )
+        // Bottom row: 3 system function cards
         for (i in 0 until 3) {
             val card = createCard(isWide = false)
-            card.setAppInfo(null)
-            card.setLabel(bottomLabels[i])
+            card.setIconResource(SYSTEM_CARD_ICONS[i])
+            card.setLabel(getString(SYSTEM_CARD_LABELS[i]))
             rowBottom.addView(
                 card, LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
@@ -130,10 +195,16 @@ class MainActivity : AppCompatActivity() {
                 2 -> card.onCardClicked = { openFileManager() }
             }
         }
+
+        // cardViews indices: 0-2 top row, 3-4 middle row, 5-7 bottom row
+        // Replaceable cards: index 2 (top-right) and index 4 (middle-right)
+        cardViews[2].onCardLongClicked = { showReplaceAppDialog(2) }
+        cardViews[4].onCardLongClicked = { showReplaceAppDialog(4) }
     }
 
     private fun createCard(isWide: Boolean): LauncherCardView {
         val card = LauncherCardView(this).apply {
+            id = View.generateViewId()
             setIconLayout(iconAbove = !isWide)
             setAppInfo(null)
         }
@@ -141,25 +212,49 @@ class MainActivity : AppCompatActivity() {
         return card
     }
 
-    private fun loadBackground() {
-        val rightPanel = findViewById<View>(R.id.right_panel)
-        rightPanel.post {
-            val panelWidth = rightPanel.width
-            val panelHeight = rightPanel.height
+    // ─── App Loading & Background ─────────────────────────────────
 
-            if (panelWidth <= 0 || panelHeight <= 0) {
+    private fun loadAppsAndBackground() {
+        val rightPanel = findViewById<View>(R.id.right_panel)
+        val mainContent = findViewById<View>(R.id.main_content)
+
+        mainContent.post {
+            val contentHeight = mainContent.height
+            val iviW = iviPanel.width
+            val rightW = rightPanel.width
+
+            if (contentHeight <= 0 || iviW <= 0 || rightW <= 0) {
                 applyOverlays()
                 return@post
             }
 
             lifecycleScope.launch {
+                // Find all apps on background thread
+                val iviApp = withContext(Dispatchers.IO) { findIviApp() }
+                val lazyMedia = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_LAZYMEDIA) }
+                val youtube = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_YOUTUBE) }
+                val googlePlay = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_GOOGLE_PLAY) }
+                val allApps = withContext(Dispatchers.IO) { appRepo.getInstalledLaunchableApps() }
+
+                iviAppInfo = iviApp
+
+                // Track bound packages for random exclusion
+                boundCardPackages.clear()
+                boundCardPackages.add(packageName) // self
+                if (iviApp != null) boundCardPackages.add(iviApp.packageName)
+                if (lazyMedia != null) boundCardPackages.add(lazyMedia.packageName)
+                if (youtube != null) boundCardPackages.add(youtube.packageName)
+                if (googlePlay != null) boundCardPackages.add(googlePlay.packageName)
+
+                // Cut background tiles
                 val cutter = withContext(Dispatchers.IO) {
                     try {
                         val src = BitmapFactory.decodeResource(resources, R.drawable.bg_full)
                         BackgroundCutter(
                             src,
-                            panelWidth,
-                            panelHeight,
+                            iviW,
+                            rightW,
+                            contentHeight,
                             dpToPx(8),
                             dpToPx(8)
                         )
@@ -168,30 +263,127 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                if (cutter != null) {
-                    backgroundCutter = cutter
-                    for (i in 0 until 8) {
-                        if (i < cardViews.size) {
-                            val tile = cutter.getTile(i)
-                            cardViews[i].setCardBackground(tile)
+                withContext(Dispatchers.Main) {
+                    if (cutter != null) {
+                        backgroundCutter = cutter
+                        // Set IVI background (tile 0)
+                        val iviTile = cutter.getTile(0)
+                        iviBg.setImageBitmap(iviTile)
+
+                        // Set card backgrounds (tiles 1-8 map to cardViews[0-7])
+                        for (i in 1..8) {
+                            val cardIdx = i - 1
+                            if (cardIdx < cardViews.size) {
+                                val tile = cutter.getTile(i)
+                                cardViews[cardIdx].setCardBackground(tile)
+                            }
                         }
                     }
+
+                    // Update IVI panel content
+                    if (iviApp != null) {
+                        iviAppIcon.setImageDrawable(iviApp.icon)
+                        iviAppLabel.text = iviApp.label
+                    }
+
+                    // Assign apps to top/middle cards
+                    assignAppsToCards(allApps, lazyMedia, youtube, googlePlay)
+                    applyOverlays()
+                    setupFocusNavigation()
                 }
-                applyOverlays()
             }
         }
     }
 
+    private fun findIviApp(): AppRepository.AppInfo? {
+        for (pkg in IVI_CANDIDATE_PACKAGES) {
+            val info = appRepo.getAppInfo(pkg)
+            if (info != null) return info
+        }
+        return null
+    }
+
+    private fun assignAppsToCards(
+        allApps: List<AppRepository.AppInfo>,
+        lazyMedia: AppRepository.AppInfo?,
+        youtube: AppRepository.AppInfo?,
+        googlePlay: AppRepository.AppInfo?
+    ) {
+        // cardViews: [0]=top-left, [1]=top-mid, [2]=top-right, [3]=mid-left, [4]=mid-right
+        bindAppToCard(0, lazyMedia, "LazyMedia")
+        bindAppToCard(1, youtube, "YouTube")
+        bindRandomAppToCard(2, allApps)
+        bindAppToCard(3, googlePlay, "Google Play")
+        bindRandomAppToCard(4, allApps)
+    }
+
+    private fun bindAppToCard(cardIndex: Int, app: AppRepository.AppInfo?, fallbackLabel: String) {
+        if (cardIndex >= cardViews.size) return
+        val card = cardViews[cardIndex]
+
+        if (app != null) {
+            card.setAppInfo(app)
+            card.onCardClicked = {
+                val intent = packageManager.getLaunchIntentForPackage(app.packageName)
+                if (intent != null) startActivity(intent)
+            }
+        } else {
+            card.setAppInfo(null)
+            card.setLabel(fallbackLabel)
+            card.onCardClicked = {
+                Toast.makeText(this, R.string.app_not_installed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun bindRandomAppToCard(cardIndex: Int, allApps: List<AppRepository.AppInfo>) {
+        if (cardIndex >= cardViews.size) return
+        val card = cardViews[cardIndex]
+
+        // Check SharedPreferences for user-selected binding first
+        val prefs = getSharedPreferences("card_bindings", MODE_PRIVATE)
+        val savedPkg = prefs.getString("card_${cardIndex}_pkg", null)
+
+        if (savedPkg != null) {
+            val savedApp = appRepo.getAppInfo(savedPkg)
+            if (savedApp != null) {
+                card.setAppInfo(savedApp)
+                card.onCardClicked = {
+                    val intent = packageManager.getLaunchIntentForPackage(savedApp.packageName)
+                    if (intent != null) startActivity(intent)
+                }
+                return
+            }
+        }
+
+        // Random from available apps (excluding bound packages)
+        val available = allApps.filter { it.packageName !in boundCardPackages }
+        if (available.isNotEmpty()) {
+            val randomApp = available.random()
+            card.setAppInfo(randomApp)
+            boundCardPackages.add(randomApp.packageName)
+            card.onCardClicked = {
+                val intent = packageManager.getLaunchIntentForPackage(randomApp.packageName)
+                if (intent != null) startActivity(intent)
+            }
+        } else {
+            card.setAppInfo(null)
+            card.onCardClicked = null
+        }
+    }
+
+    // ─── Overlays ───────────────────────────────────────────────
+
     private fun applyOverlays() {
         val orientations = listOf(
-            null, // card 0: solid
-            null, // card 1: solid
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR, // card 2: diag gradient
-            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, // card 3: H gradient
-            null, // card 4: solid
-            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, // card 5: V gradient
-            null, // card 6: solid
-            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT // card 7: H gradient
+            null,
+            null,
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+            null,
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            null,
+            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
         )
 
         val colors = listOf(
@@ -216,6 +408,19 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    // ─── Focus Navigation ─────────────────────────────────────────
+
+    private fun setupFocusNavigation() {
+        // IVI ↔ top row card 1 (cardViews[0] = LazyMedia)
+        iviPanel.nextFocusRightId = cardViews[0].id
+        cardViews[0].nextFocusLeftId = iviPanel.id
+
+        // IVI ↔ middle row card 1 (cardViews[3] = Google Play)
+        cardViews[3].nextFocusLeftId = iviPanel.id
+    }
+
+    // ─── System Functions ─────────────────────────────────────────
 
     private fun openAppList() {
         startActivity(Intent(this, AppListActivity::class.java))
@@ -261,9 +466,62 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showReplaceAppDialog(cardIndex: Int) {
+        lifecycleScope.launch {
+            val apps = withContext(Dispatchers.IO) {
+                appRepo.getInstalledLaunchableApps()
+            }
+
+            if (apps.isEmpty()) return@launch
+
+            val appNames = apps.map { it.label }.toTypedArray()
+
+            android.app.AlertDialog.Builder(this@MainActivity)
+                .setTitle(R.string.select_app)
+                .setItems(appNames) { _, which ->
+                    val selected = apps[which]
+                    val prefs = getSharedPreferences("card_bindings", MODE_PRIVATE)
+                    prefs.edit().putString("card_${cardIndex}_pkg", selected.packageName).apply()
+
+                    // Immediately refresh the card
+                    cardViews[cardIndex].setAppInfo(selected)
+                    cardViews[cardIndex].onCardClicked = {
+                        val intent = packageManager.getLaunchIntentForPackage(selected.packageName)
+                        if (intent != null) startActivity(intent)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
+    }
+
+    // ─── Lifecycle ─────────────────────────────────────────────
+
     override fun onResume() {
         super.onResume()
         statusBar.startListening()
+
+        // Refresh random app cards
+        lifecycleScope.launch {
+            val apps = withContext(Dispatchers.IO) {
+                appRepo.getInstalledLaunchableApps()
+            }
+
+            // Rebuild bound packages exclusion set
+            boundCardPackages.clear()
+            boundCardPackages.add(packageName)
+            if (iviAppInfo != null) boundCardPackages.add(iviAppInfo!!.packageName)
+
+            val lmPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_LAZYMEDIA)?.packageName }
+            val ytPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_YOUTUBE)?.packageName }
+            val gpPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_GOOGLE_PLAY)?.packageName }
+            if (lmPkg != null) boundCardPackages.add(lmPkg)
+            if (ytPkg != null) boundCardPackages.add(ytPkg)
+            if (gpPkg != null) boundCardPackages.add(gpPkg)
+
+            bindRandomAppToCard(2, apps)
+            bindRandomAppToCard(4, apps)
+        }
     }
 
     override fun onPause() {
