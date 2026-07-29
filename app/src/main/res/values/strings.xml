@@ -9,4 +9,7 @@
     <string name="add_app">添加应用</string>
     <string name="remove_app">移除应用</string>
     <string name="confirm_remove">确定要移除此应用吗？</string>
+    <string name="app_not_installed">未安装</string>
+    <string name="ivi_not_installed">IVI 未安装</string>
+    <string name="select_app">选择应用</string>
 </resources>
