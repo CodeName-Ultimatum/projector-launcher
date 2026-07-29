@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="status_bar_bg">#CC1A1A2E</color>
+    <color name="main_bg">#FF0D1117</color>
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#B3FFFFFF</color>
+    <color name="card_overlay_1">#6626405C</color>
+    <color name="card_overlay_2">#662D5A4B</color>
+    <color name="card_overlay_3_start">#663A4A6B</color>
+    <color name="card_overlay_3_end">#661E3040</color>
+    <color name="card_overlay_4_start">#662E3D4F</color>
+    <color name="card_overlay_4_end">#661A2836</color>
+    <color name="card_overlay_5">#663B2E3F</color>
+    <color name="card_overlay_6_start">#662C4048</color>
+    <color name="card_overlay_6_end">#661E2D33</color>
+    <color name="card_overlay_7">#66334155</color>
+    <color name="card_overlay_8_start">#662A3A42</color>
+    <color name="card_overlay_8_end">#661F2C34</color>
+    <color name="quick_bar_bg">#CC0D1117</color>
+    <color name="add_button_bg">#33334455</color>
+    <color name="card_focused_border">#80FFFFFF</color>
+</resources>

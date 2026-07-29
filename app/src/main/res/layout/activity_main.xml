@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/main_bg">
+
+    <!-- Status bar: added programmatically -->
+    <FrameLayout
+        android:id="@+id/status_bar_container"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/status_bar_height" />
+
+    <!-- Main content area -->
+    <LinearLayout
+        android:id="@+id/main_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <!-- Left IVI panel: 1/4 width -->
+        <FrameLayout
+            android:id="@+id/ivi_panel"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:descendantFocusability="blocksDescendants">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <ImageView
+                    android:id="@+id/ivi_icon"
+                    android:layout_width="@dimen/ivi_icon_size"
+                    android:layout_height="@dimen/ivi_icon_size"
+                    android:src="@drawable/ic_ivi"
+                    android:scaleType="fitCenter" />
+
+                <TextView
+                    android:id="@+id/ivi_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ivi_label"
+                    android:textColor="@color/text_primary"
+                    android:textSize="@dimen/ivi_text_size"
+                    android:layout_marginTop="6dp" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- Right card grid: 3/4 width -->
+        <LinearLayout
+            android:id="@+id/right_panel"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="3"
+            android:orientation="vertical"
+            android:padding="0dp">
+
+            <!-- Top row: 3 cards -->
+            <LinearLayout
+                android:id="@+id/row_top"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="horizontal" />
+
+            <!-- Middle row: 2 cards with vertical gaps -->
+            <LinearLayout
+                android:id="@+id/row_middle"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:layout_marginTop="@dimen/card_gap_vertical"
+                android:layout_marginBottom="@dimen/card_gap_vertical" />
+
+            <!-- Bottom row: 3 fixed-function cards -->
+            <LinearLayout
+                android:id="@+id/row_bottom"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="horizontal" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Bottom quick bar -->
+    <FrameLayout
+        android:id="@+id/quick_bar_container"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/quick_bar_height" />
+
+</LinearLayout>
