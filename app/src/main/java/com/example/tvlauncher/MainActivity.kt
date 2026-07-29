@@ -20,7 +20,6 @@ import com.example.tvlauncher.util.BackgroundCutter
 import com.example.tvlauncher.util.dpToPx
 import com.example.tvlauncher.util.setFocusZoom
 import com.example.tvlauncher.util.setSafeOnClickListener
-import com.example.tvlauncher.util.setSafeOnLongClickListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -352,6 +351,7 @@ class MainActivity : AppCompatActivity() {
                     val intent = packageManager.getLaunchIntentForPackage(savedApp.packageName)
                     if (intent != null) startActivity(intent)
                 }
+                boundCardPackages.add(savedApp.packageName)
                 return
             }
         }
