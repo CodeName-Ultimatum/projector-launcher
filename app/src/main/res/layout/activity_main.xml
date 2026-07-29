@@ -1,101 +1,133 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/root_layout"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="@color/main_bg">
 
-    <!-- Status bar: added programmatically -->
-    <FrameLayout
-        android:id="@+id/status_bar_container"
+    <!--第 0 层：全屏背景底图（10% alpha）-->
+    <ImageView
+        android:id="@+id/global_bg"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/status_bar_height" />
+        android:layout_height="match_parent"
+        android:src="@drawable/bg_full"
+        android:scaleType="centerCrop"
+        android:alpha="0.1" />
 
-    <!-- Main content area -->
+    <!--主内容区（正常层级）-->
     <LinearLayout
-        android:id="@+id/main_content"
+        android:id="@+id/root_layout"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="horizontal">
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-        <!-- Left IVI panel: 1/4 width -->
+        <!--状态栏：以代码方式添加-->
         <FrameLayout
-            android:id="@+id/ivi_panel"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:id="@+id/status_bar_container"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/status_bar_height" />
+
+        <!--主内容区-->
+        <LinearLayout
+            android:id="@+id/main_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
             android:layout_weight="1"
-            android:focusable="true"
-            android:focusableInTouchMode="true"
-            android:descendantFocusability="blocksDescendants">
+            android:orientation="horizontal">
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:orientation="vertical"
-                android:gravity="center">
+            <!--左侧 IVI 面板：1/4 宽度，可获焦-->
+            <FrameLayout
+                android:id="@+id/ivi_panel"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:descendantFocusability="blocksDescendants">
 
+                <!--IVI 背景图块（代码设置 ImageView src）-->
                 <ImageView
-                    android:id="@+id/ivi_icon"
-                    android:layout_width="@dimen/ivi_icon_size"
-                    android:layout_height="@dimen/ivi_icon_size"
-                    android:src="@drawable/ic_ivi"
-                    android:scaleType="fitCenter" />
+                    android:id="@+id/ivi_bg"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    android:alpha="0.15" />
 
-                <TextView
-                    android:id="@+id/ivi_label"
+                <!--IVI 叠加层-->
+                <View
+                    android:id="@+id/ivi_overlay"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@color/ivi_overlay" />
+
+                <!--IVI 内容：图标 + 名称-->
+                <LinearLayout
+                    android:id="@+id/ivi_content"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/ivi_label"
-                    android:textColor="@color/text_primary"
-                    android:textSize="@dimen/ivi_text_size"
-                    android:layout_marginTop="6dp" />
+                    android:layout_gravity="center"
+                    android:orientation="vertical"
+                    android:gravity="center">
+
+                    <ImageView
+                        android:id="@+id/ivi_app_icon"
+                        android:layout_width="@dimen/ivi_icon_size"
+                        android:layout_height="@dimen/ivi_icon_size"
+                        android:src="@drawable/ic_ivi"
+                        android:scaleType="fitCenter" />
+
+                    <TextView
+                        android:id="@+id/ivi_app_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/ivi_label"
+                        android:textColor="@color/text_primary"
+                        android:textSize="@dimen/ivi_text_size"
+                        android:layout_marginTop="6dp" />
+                </LinearLayout>
+            </FrameLayout>
+
+            <!--右侧卡片网格：3/4 宽度-->
+            <LinearLayout
+                android:id="@+id/right_panel"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="3"
+                android:orientation="vertical"
+                android:padding="0dp">
+
+                <!--上排：3 张卡片-->
+                <LinearLayout
+                    android:id="@+id/row_top"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal" />
+
+                <!--中排：包含水平和垂直间隙-->
+                <LinearLayout
+                    android:id="@+id/row_middle"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="@dimen/card_gap_vertical"
+                    android:layout_marginBottom="@dimen/card_gap_vertical" />
+
+                <!--下排：3 张固定功能卡片-->
+                <LinearLayout
+                    android:id="@+id/row_bottom"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal" />
             </LinearLayout>
-        </FrameLayout>
-
-        <!-- Right card grid: 3/4 width -->
-        <LinearLayout
-            android:id="@+id/right_panel"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="3"
-            android:orientation="vertical"
-            android:padding="0dp">
-
-            <!-- Top row: 3 cards -->
-            <LinearLayout
-                android:id="@+id/row_top"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:orientation="horizontal" />
-
-            <!-- Middle row: 2 cards with vertical gaps -->
-            <LinearLayout
-                android:id="@+id/row_middle"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:orientation="horizontal"
-                android:layout_marginTop="@dimen/card_gap_vertical"
-                android:layout_marginBottom="@dimen/card_gap_vertical" />
-
-            <!-- Bottom row: 3 fixed-function cards -->
-            <LinearLayout
-                android:id="@+id/row_bottom"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:orientation="horizontal" />
         </LinearLayout>
+
+        <!--底部快捷栏-->
+        <FrameLayout
+            android:id="@+id/quick_bar_container"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/quick_bar_height" />
+
     </LinearLayout>
-
-    <!-- Bottom quick bar -->
-    <FrameLayout
-        android:id="@+id/quick_bar_container"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/quick_bar_height" />
-
-</LinearLayout>
+</FrameLayout>
