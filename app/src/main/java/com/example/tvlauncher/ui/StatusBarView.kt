@@ -15,6 +15,7 @@ import android.widget.TextClock
 import android.widget.TextView
 import com.example.tvlauncher.R
 import com.example.tvlauncher.util.dpToPx
+import com.example.tvlauncher.util.getWifiSignalLevel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -22,13 +23,15 @@ import java.util.Locale
 /**
  * 顶部状态栏 — 显示 WiFi 信号强度、时间、星期和日期
  *
- * 结构：水平 LinearLayout，内容靠右排列
- *   - WiFi 图标（80x80dp，白色着色）
- *   - 时间 TextClock（56sp，白色，自动 12/24 小时制）
- *   - 星期文字（40sp，80%白色）
- *   - 日期文字（40sp，80%白色）
+ * 结构：水平 LinearLayout，weight 弹簧分隔 WiFi（左）和时间组（右）
+ *   - WiFi 图标（40dp，#E6E6E6）
+ *   - 弹性占位 View（weight=1）
+ *   - 时间 TextClock（24sp，白色，自动 12/24 小时制）
+ *   - 星期文字（16sp，100%白色）
+ *   - 日期文字（16sp，100%白色）
  *
- * 通过广播监听时间变化（ACTION_TIME_TICK）和 WiFi 信号变化（RSSI_CHANGED_ACTION）
+ * 通过广播监听时间变化（ACTION_TIME_TICK）、WiFi 信号变化（RSSI_CHANGED_ACTION）
+ * 和网络连接状态变化（NETWORK_STATE_CHANGED_ACTION）
  */
 class StatusBarView @JvmOverloads constructor(
     context: Context,
@@ -42,32 +45,48 @@ class StatusBarView @JvmOverloads constructor(
     private val timeText: TextClock
     private var receiverRegistered = false
 
-    /** 接收时间变化和WiFi信号变化的广播 */
+    /** 接收时间变化、WiFi信号变化和网络状态变化的广播 */
     private val tickReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_TIME_TICK ||
-                intent?.action == WifiManager.RSSI_CHANGED_ACTION
-            ) {
-                updateDateAndWeekday()
-                updateWifi()
+            when (intent?.action) {
+                Intent.ACTION_TIME_TICK -> {
+                    updateDateAndWeekday()
+                }
+                WifiManager.RSSI_CHANGED_ACTION,
+                WifiManager.NETWORK_STATE_CHANGED_ACTION -> {
+                    updateWifi()
+                }
             }
         }
     }
 
     init {
         orientation = HORIZONTAL
-        gravity = Gravity.END or Gravity.BOTTOM
+        gravity = Gravity.BOTTOM
         // 整体向左移动 40dp
         setPadding(0, 0, context.dpToPx(40), 0)
 
-        // ─── WiFi 图标 40x40dp（24dp * 5/3），靠左对齐 ───
+        // ─── 弹性占位（左侧）— 把 WiFi 推到中间偏右 ───
+        addView(android.view.View(context).apply {
+            layoutParams = LayoutParams(0, 0, 1f)
+        })
+
+        // ─── WiFi 图标 40x40dp，居中靠右，默认隐藏 ───
         wifiIcon = ImageView(context).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
+            setColorFilter(Color.parseColor("#E6E6E6"))
+            visibility = GONE
             layoutParams = LayoutParams(context.dpToPx(40), context.dpToPx(40)).apply {
                 gravity = Gravity.BOTTOM or Gravity.CENTER_VERTICAL
+                leftMargin = context.dpToPx(48)
             }
         }
         addView(wifiIcon)
+
+        // ─── 弹性占位（右侧）— 把时间组推右 ───
+        addView(android.view.View(context).apply {
+            layoutParams = LayoutParams(0, 0, 0.5f)
+        })
 
         // ─── 时间 + 星期 + 日期（水平排列，底部基线对齐）───
         val timeGroup = LinearLayout(context).apply {
@@ -76,11 +95,11 @@ class StatusBarView @JvmOverloads constructor(
             layoutParams = LayoutParams(
                 LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = Gravity.END or Gravity.BOTTOM
+                gravity = Gravity.BOTTOM
             }
         }
 
-        // 时间 32sp，自动根据系统设置切换12/24小时制
+        // 时间 24sp，自动根据系统设置切换12/24小时制
         timeText = TextClock(context).apply {
             format12Hour = "hh:mm"
             format24Hour = "HH:mm"
@@ -90,7 +109,7 @@ class StatusBarView @JvmOverloads constructor(
         }
         timeGroup.addView(timeText)
 
-        // 星期 16sp，80%白色
+        // 星期 16sp，100%白色
         weekdayText = TextView(context).apply {
             setTextColor(Color.parseColor("#FFFFFF"))
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
@@ -122,6 +141,7 @@ class StatusBarView @JvmOverloads constructor(
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_TIME_TICK)
             addAction(WifiManager.RSSI_CHANGED_ACTION)
+            addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
         }
         context.registerReceiver(tickReceiver, filter)
         receiverRegistered = true
@@ -148,16 +168,30 @@ class StatusBarView @JvmOverloads constructor(
 
     /**
      * 更新 WiFi 图标
-     * - 已连接：显示完整 WiFi 图标，100%不透明
-     * - 断开连接：显示完整 WiFi 图标，40%透明度
+     * - 已连接：显示对应信号等级的 WiFi 图标
+     * - 未连接：隐藏图标（GONE）
      */
     private fun updateWifi() {
         val wifiManager = context.applicationContext
-            .getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        val wifiInfo = wifiManager?.connectionInfo
+            .getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
+        val wifiInfo = wifiManager.connectionInfo
         val isConnected = wifiInfo != null && wifiInfo.networkId != -1
 
-        wifiIcon.setImageResource(R.drawable.ic_wifi_4)
-        wifiIcon.alpha = if (isConnected) 1.0f else 0.4f
+        if (!isConnected) {
+            wifiIcon.visibility = GONE
+            return
+        }
+
+        val level = context.getWifiSignalLevel()
+        wifiIcon.setImageResource(
+            when (level) {
+                0 -> R.drawable.ic_wifi_0
+                1 -> R.drawable.ic_wifi_1
+                2 -> R.drawable.ic_wifi_2
+                3 -> R.drawable.ic_wifi_3
+                else -> R.drawable.ic_wifi_4
+            }
+        )
+        wifiIcon.visibility = VISIBLE
     }
 }
