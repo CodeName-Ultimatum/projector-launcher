@@ -1,15 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    字符串资源文件
+    所有用户可见的文字集中管理，方便多语言扩展
+-->
 <resources>
+    <!-- 应用名称 -->
     <string name="app_name">TV Launcher</string>
+    <!-- IVI面板默认标签 -->
     <string name="ivi_label">IVI</string>
+    <!-- 下排系统功能卡片标签 -->
     <string name="app_list">应用列表</string>
     <string name="settings">设置</string>
     <string name="file_manager">文件管理</string>
+    <!-- 卡片无应用时的占位文字 -->
     <string name="no_app">暂无</string>
+    <!-- 对话框标题 -->
     <string name="add_app">添加应用</string>
     <string name="remove_app">移除应用</string>
+    <string name="select_app">选择应用</string>
+    <!-- 对话框内容 -->
     <string name="confirm_remove">确定要移除此应用吗？</string>
+    <!-- Toast 提示 -->
     <string name="app_not_installed">未安装</string>
     <string name="ivi_not_installed">IVI 未安装</string>
-    <string name="select_app">选择应用</string>
 </resources>

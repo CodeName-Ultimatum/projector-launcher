@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
-import android.graphics.PorterDuff
 import android.net.wifi.WifiManager
 import android.text.format.DateFormat
 import android.util.AttributeSet
@@ -23,8 +22,7 @@ import java.util.Locale
 /**
  * 顶部状态栏 — 显示 WiFi 信号强度、时间、星期和日期
  *
- * 结构：水平 LinearLayout，两端分布
- *   - 左侧无内容（预留位置）
+ * 结构：水平 LinearLayout，内容靠右排列
  *   - WiFi 图标（80x80dp，白色着色）
  *   - 时间 TextClock（56sp，白色，自动 12/24 小时制）
  *   - 星期文字（40sp，80%白色）
@@ -58,61 +56,59 @@ class StatusBarView @JvmOverloads constructor(
 
     init {
         orientation = HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        // 上下各24dp内边距，左右各24dp
-        setPadding(context.dpToPx(24), context.dpToPx(24), context.dpToPx(24), context.dpToPx(24))
+        gravity = Gravity.END or Gravity.BOTTOM
+        // 整体向左移动 40dp
+        setPadding(0, 0, context.dpToPx(40), 0)
 
-        // ─── WiFi 图标 80x80dp ───
+        // ─── WiFi 图标 40x40dp（24dp * 5/3），靠左对齐 ───
         wifiIcon = ImageView(context).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
-            setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN)
-            layoutParams = LayoutParams(context.dpToPx(80), context.dpToPx(80)).apply {
-                rightMargin = context.dpToPx(28)
-                gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LayoutParams(context.dpToPx(40), context.dpToPx(40)).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_VERTICAL
             }
         }
         addView(wifiIcon)
 
-        // ─── 时间 + 星期 + 日期（水平排列）───
+        // ─── 时间 + 星期 + 日期（水平排列，底部基线对齐）───
         val timeGroup = LinearLayout(context).apply {
             orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.BOTTOM
             layoutParams = LayoutParams(
                 LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                gravity = Gravity.END or Gravity.BOTTOM
             }
         }
 
-        // 时间 56sp，自动根据系统设置切换12/24小时制
+        // 时间 32sp，自动根据系统设置切换12/24小时制
         timeText = TextClock(context).apply {
             format12Hour = "hh:mm"
             format24Hour = "HH:mm"
             setTextColor(Color.WHITE)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 56f)
-            gravity = Gravity.CENTER_VERTICAL
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 24f)
+            gravity = Gravity.BOTTOM
         }
         timeGroup.addView(timeText)
 
-        // 星期 40sp，80%白色（#CCFFFFFF）
+        // 星期 16sp，80%白色
         weekdayText = TextView(context).apply {
-            setTextColor(Color.parseColor("#CCFFFFFF"))
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 40f)
-            gravity = Gravity.CENTER_VERTICAL
+            setTextColor(Color.parseColor("#FFFFFF"))
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
+            gravity = Gravity.BOTTOM
             layoutParams = LayoutParams(
                 LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
-            ).apply { leftMargin = context.dpToPx(20) }
+            ).apply { leftMargin = context.dpToPx(16) }
         }
         timeGroup.addView(weekdayText)
 
-        // 日期 40sp，80%白色（#CCFFFFFF）
+        // 日期 16sp，100%白色
         dateText = TextView(context).apply {
-            setTextColor(Color.parseColor("#CCFFFFFF"))
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 40f)
-            gravity = Gravity.CENTER_VERTICAL
+            setTextColor(Color.parseColor("#FFFFFF"))
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
+            gravity = Gravity.BOTTOM
             layoutParams = LayoutParams(
                 LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
-            ).apply { leftMargin = context.dpToPx(20) }
+            ).apply { leftMargin = context.dpToPx(16) }
         }
         timeGroup.addView(dateText)
 
@@ -152,8 +148,8 @@ class StatusBarView @JvmOverloads constructor(
 
     /**
      * 更新 WiFi 图标
-     * - 已连接：显示信号等级 ic_wifi_0~4，全白着色
-     * - 断开连接：显示 ic_wifi_0，40%白色着色
+     * - 已连接：显示完整 WiFi 图标，100%不透明
+     * - 断开连接：显示完整 WiFi 图标，40%透明度
      */
     private fun updateWifi() {
         val wifiManager = context.applicationContext
@@ -161,23 +157,7 @@ class StatusBarView @JvmOverloads constructor(
         val wifiInfo = wifiManager?.connectionInfo
         val isConnected = wifiInfo != null && wifiInfo.networkId != -1
 
-        if (!isConnected) {
-            wifiIcon.setImageResource(R.drawable.ic_wifi_0)
-            wifiIcon.setColorFilter(
-                Color.parseColor("#66FFFFFF"),
-                PorterDuff.Mode.SRC_IN
-            )
-        } else {
-            val level = WifiManager.calculateSignalLevel(wifiInfo!!.rssi, 5)
-            val iconRes = when (level) {
-                0 -> R.drawable.ic_wifi_0
-                1 -> R.drawable.ic_wifi_1
-                2 -> R.drawable.ic_wifi_2
-                3 -> R.drawable.ic_wifi_3
-                else -> R.drawable.ic_wifi_4
-            }
-            wifiIcon.setImageResource(iconRes)
-            wifiIcon.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN)
-        }
+        wifiIcon.setImageResource(R.drawable.ic_wifi_4)
+        wifiIcon.alpha = if (isConnected) 1.0f else 0.4f
     }
 }

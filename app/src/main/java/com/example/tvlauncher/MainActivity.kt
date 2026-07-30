@@ -175,13 +175,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val container = findViewById<View>(R.id.ivi_container)
-        (container as android.widget.FrameLayout).addView(
-            iviCard,
-            android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-            )
+        val mainContent = findViewById<LinearLayout>(R.id.main_content)
+        // 将 IVI 卡片插入 main_content 的第 0 位，权重 1，右边距 8dp
+        mainContent.addView(
+            iviCard, 0,
+            LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
+            ).apply {
+                rightMargin = dpToPx(8)
+            }
         )
     }
 
@@ -193,25 +195,30 @@ class MainActivity : AppCompatActivity() {
         val rowMiddle = findViewById<LinearLayout>(R.id.row_middle)
         val rowBottom = findViewById<LinearLayout>(R.id.row_bottom)
 
-        // 上排：3张竖卡（图标在上），卡片间右侧margin=8dp
+        val gapH = dpToPx(8)  // card_gap_horizontal
+        val halfGapH = gapH / 2
+
+        // 上排：3张竖卡（图标在上）
         for (i in 0 until 3) {
             val card = createCard(isWide = false)
             rowTop.addView(
                 card, LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
                 ).apply {
-                    if (i < 2) rightMargin = dpToPx(8)
+                    leftMargin = halfGapH
+                    rightMargin = halfGapH
                 })
         }
 
-        // 中排：2张横卡（图标在左），卡片间右侧margin=8dp
+        // 中排：2张横卡（图标在左）
         for (i in 0 until 2) {
             val card = createCard(isWide = true)
             rowMiddle.addView(
                 card, LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
                 ).apply {
-                    if (i == 0) rightMargin = dpToPx(8)
+                    leftMargin = halfGapH
+                    rightMargin = halfGapH
                 })
         }
 
@@ -224,7 +231,8 @@ class MainActivity : AppCompatActivity() {
                 card, LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
                 ).apply {
-                    if (i < 2) rightMargin = dpToPx(8)
+                    leftMargin = halfGapH
+                    rightMargin = halfGapH
                 })
 
             when (i) {
@@ -261,14 +269,14 @@ class MainActivity : AppCompatActivity() {
      */
     private fun loadAppsAndBackground() {
         val rightPanel = findViewById<View>(R.id.right_panel)
-        val iviContainer = findViewById<View>(R.id.ivi_container)
         val mainContent = findViewById<View>(R.id.main_content)
 
         // 使用 post 确保布局已完成，可以获取正确的宽高
         mainContent.post {
             val contentHeight = mainContent.height
-            val iviW = iviContainer.width
             val rightW = rightPanel.width
+            // IVI 卡片宽度 = main_content 宽度 *（IVI 权重 1 / 总权重 4）
+            val iviW = mainContent.width / 4
 
             // 如果高度无效（布局未完成），跳过背景裁剪，只设置覆盖层
             if (contentHeight <= 0 || iviW <= 0 || rightW <= 0) {

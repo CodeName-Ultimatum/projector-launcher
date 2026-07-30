@@ -52,9 +52,7 @@ class QuickBarView @JvmOverloads constructor(
         // 内部水平容器，垂直居中
         container = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            // 左右各12dp内边距
-            setPadding(context.dpToPx(12), 0, context.dpToPx(12), 0)
+            gravity = Gravity.TOP
         }
         addView(
             container,

@@ -1,17 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    尺寸定义文件
+    所有dp/sp值集中管理，方便统一调整视觉比例
+-->
 <resources>
+    <!-- 状态栏容器高度 -->
     <dimen name="status_bar_height">56dp</dimen>
+    <!-- 快捷栏容器高度 -->
     <dimen name="quick_bar_height">80dp</dimen>
+    <!-- 卡片水平间隙 -->
     <dimen name="card_gap_horizontal">8dp</dimen>
+    <!-- 卡片垂直间隙 -->
     <dimen name="card_gap_vertical">8dp</dimen>
+    <!-- 竖卡（iconAbove）图标尺寸 -->
     <dimen name="card_icon_tall">56dp</dimen>
+    <!-- 横卡（iconBeside）图标尺寸 -->
     <dimen name="card_icon_wide">48dp</dimen>
+    <!-- IVI面板图标尺寸 -->
     <dimen name="ivi_icon_size">72dp</dimen>
-    <dimen name="card_text_size">14sp</dimen>
+    <!-- 卡片应用名称文字大小 -->
+    <dimen name="card_text_size">16sp</dimen>
+    <!-- IVI应用名称文字大小 -->
     <dimen name="ivi_text_size">16sp</dimen>
+    <!-- 快捷栏单项宽度 -->
     <dimen name="quick_item_width">96dp</dimen>
-    <dimen name="quick_item_text_size">13sp</dimen>
+    <!-- 快捷栏文字大小 -->
+    <dimen name="quick_item_text_size">16sp</dimen>
+    <!-- 状态栏次要文字（星期/日期）大小 -->
     <dimen name="status_text_size">12sp</dimen>
+    <!-- 状态栏时间文字大小 -->
     <dimen name="status_time_size">18sp</dimen>
+    <!-- 聚焦缩放比例 -->
     <dimen name="focus_scale">1.06</dimen>
 </resources>
