@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.text.format.DateFormat
 import android.util.AttributeSet
@@ -43,6 +45,7 @@ class StatusBarView @JvmOverloads constructor(
     private val dateText: TextView
     private val weekdayText: TextView
     private val timeText: TextClock
+    private val connectivityManager: ConnectivityManager
     private var receiverRegistered = false
 
     /** 接收时间变化、WiFi信号变化和网络状态变化的广播 */
@@ -61,6 +64,9 @@ class StatusBarView @JvmOverloads constructor(
     }
 
     init {
+        connectivityManager = context.applicationContext
+            .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
         orientation = HORIZONTAL
         gravity = Gravity.BOTTOM
         // 整体向左移动 40dp
@@ -168,16 +174,16 @@ class StatusBarView @JvmOverloads constructor(
 
     /**
      * 更新 WiFi 图标
-     * - 已连接：显示对应信号等级的 WiFi 图标
-     * - 未连接：隐藏图标（GONE）
+     * 通过 ConnectivityManager 判断当前活跃网络是否为 WiFi，
+     * 规避 H313 主板对 WifiInfo.networkId 的净化返回
+     * - 已连接 WiFi 且为活跃网络：显示对应信号等级的图标
+     * - 未连接或活跃网络非 WiFi：隐藏图标（GONE）
      */
     private fun updateWifi() {
-        val wifiManager = context.applicationContext
-            .getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
-        val wifiInfo = wifiManager.connectionInfo
-        val isConnected = wifiInfo != null && wifiInfo.networkId != -1
+        val activeNetwork = connectivityManager.activeNetwork ?: return run { wifiIcon.visibility = GONE }
+        val caps = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return run { wifiIcon.visibility = GONE }
 
-        if (!isConnected) {
+        if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
             wifiIcon.visibility = GONE
             return
         }
