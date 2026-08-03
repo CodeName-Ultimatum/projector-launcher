@@ -58,12 +58,12 @@ class FileManagerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 确保窗口背景为深色，与页面背景一致
-        window.decorView.setBackgroundColor(Color.parseColor("#0F1419"))
+        // 确保窗口背景为深色渐变，与页面背景一致
+        window.decorView.setBackgroundResource(R.drawable.fm_background)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0F1419"))
+            setBackgroundResource(R.drawable.fm_background)
         }
 
         // ─── 顶部栏（56dp，底部微光分隔线） ───
@@ -103,6 +103,8 @@ class FileManagerActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#F2F5F9"))
             textSize = 15f
             isFocusable = false
+            // 显式透明背景，避免继承窗口背景的渐变形成色块
+            setBackgroundColor(Color.TRANSPARENT)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -124,6 +126,8 @@ class FileManagerActivity : AppCompatActivity() {
             textSize = 14f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.START
+            // 显式透明背景，避免继承窗口背景的渐变形成色块
+            setBackgroundColor(Color.TRANSPARENT)
             layoutParams = LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
             ).apply {
@@ -137,6 +141,8 @@ class FileManagerActivity : AppCompatActivity() {
         countText = TextView(this).apply {
             setTextColor(Color.parseColor("#8A94A6"))
             textSize = 13f
+            // 显式透明背景，避免继承窗口背景的渐变形成色块
+            setBackgroundColor(Color.TRANSPARENT)
         }
         toolbar.addView(countText)
 

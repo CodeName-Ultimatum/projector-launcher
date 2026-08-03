@@ -8,6 +8,8 @@
     <color name="status_bar_bg">#CC1A1A2E</color>
     <!-- 页面底色：深蓝色 -->
     <color name="main_bg">#FF00009B</color>
+    <!-- 文件管理器页面底色：近黑蓝灰（深色极简） -->
+    <color name="file_manager_bg">#FF0F1419</color>
 
     <!-- 开发版图标背景：亮橙色，醒目易识 -->
     <color name="icon_dev_bg">#FF6B00</color>
