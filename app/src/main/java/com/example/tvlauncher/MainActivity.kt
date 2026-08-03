@@ -2,11 +2,15 @@ package com.example.tvlauncher
 
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.provider.Settings
+import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
-import android.widget.Toast
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.tvlauncher.data.AppRepository
@@ -16,6 +20,7 @@ import com.example.tvlauncher.ui.QuickBarView
 import com.example.tvlauncher.ui.StatusBarView
 import com.example.tvlauncher.util.BackgroundCutter
 import com.example.tvlauncher.util.dpToPx
+import com.example.tvlauncher.util.showDarkToast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -24,9 +29,15 @@ import kotlinx.coroutines.withContext
  * TV Launcher 主 Activity — 投影仪/电视启动器首页
  *
  * 页面结构（从 activity_main.xml 定义）：
- *   - 顶部状态栏：WiFi 图标 + 时间 + 星期 + 日期
- *   - 中间内容区：IVI 面板（左1/4）+ 8张应用卡片网格（右3/4）
- *   - 底部快捷栏：水平可滚动的快捷应用入口
+ *   - 顶部状态栏（60dp）：投影仪图标 + WiFi 图标 + 时间 + 星期 + 日期
+ *   - 主内容区（weight=1）：
+ *     - IVI 卡片（左 1/4，左边距 32dp，右边距 8dp）
+ *     - 右侧卡片网格（右 3/4）：上排3竖卡 + 中排2横卡 + 下排3功能卡
+ *     - 所有内部间距统一 8dp
+ *   - 底部快捷栏（80dp）：水平可滚动的快捷应用入口
+ *   - 容器外侧 36dp 安全边距，防 TV 过扫描裁切
+ *
+ * 阴影：Google 原生 elevation + ViewOutlineProvider，spot(40%) + ambient(12%) ≈ 3.3:1
  *
  * 核心流程：
  *   1. setupUI    — 创建状态栏、快捷栏、IVI面板、卡片网格
@@ -44,6 +55,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var appRepo: AppRepository
     private lateinit var quickStore: QuickAppsStore
     private var backgroundCutter: BackgroundCutter? = null
+
+    /** 当前弹出的应用选择对话框 */
+    private var pickerDialog: android.app.Dialog? = null
 
     /** 8张右侧卡片（索引：[0-2]上排 [3-4]中排 [5-7]下排） */
     private val cardViews = mutableListOf<LauncherCardView>()
@@ -66,6 +80,8 @@ class MainActivity : AppCompatActivity() {
         const val PKG_LAZYMEDIA = "com.lazymedia.deluxe"
         const val PKG_YOUTUBE = "com.google.android.youtube.tv"
         const val PKG_GOOGLE_PLAY = "com.android.vending"
+        const val PKG_NETFLIX = "com.netflix.ninja"
+        const val PKG_CHROME = "com.android.chrome"
 
         /** IVI 应用的候选包名列表（按顺序尝试查找） */
         val IVI_CANDIDATE_PACKAGES = listOf(
@@ -92,6 +108,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // 覆盖主题的深蓝窗口背景，避免透出（深色极简风格）
+        window.decorView.setBackgroundColor(Color.parseColor("#0F1419"))
 
         appRepo = AppRepository(this)
         quickStore = QuickAppsStore(this)
@@ -132,7 +151,7 @@ class MainActivity : AppCompatActivity() {
                 if (intent != null) {
                     startActivity(intent)
                 } else {
-                    Toast.makeText(this@MainActivity, "应用无法启动", Toast.LENGTH_SHORT).show()
+                    showDarkToast("应用无法启动")
                 }
             }
             onAddRequested = {
@@ -168,20 +187,21 @@ class MainActivity : AppCompatActivity() {
                 if (intent != null) {
                     startActivity(intent)
                 } else {
-                    Toast.makeText(this, "应用无法启动", Toast.LENGTH_SHORT).show()
+                    showDarkToast("应用无法启动")
                 }
             } else {
-                Toast.makeText(this, R.string.ivi_not_installed, Toast.LENGTH_SHORT).show()
+                showDarkToast(R.string.ivi_not_installed)
             }
         }
 
         val mainContent = findViewById<LinearLayout>(R.id.main_content)
-        // 将 IVI 卡片插入 main_content 的第 0 位，权重 1，右边距 8dp
+        // IVI 和右侧卡片是一个整体，内部间距统一 8dp；right_panel 的右边距移至此处作为 leftMargin
         mainContent.addView(
             iviCard, 0,
             LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
             ).apply {
+                leftMargin = dpToPx(24)
                 rightMargin = dpToPx(8)
             }
         )
@@ -290,6 +310,8 @@ class MainActivity : AppCompatActivity() {
                 val lazyMedia = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_LAZYMEDIA) }
                 val youtube = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_YOUTUBE) }
                 val googlePlay = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_GOOGLE_PLAY) }
+                val netflix = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_NETFLIX) }
+                val chrome = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_CHROME) }
                 val allApps = withContext(Dispatchers.IO) { appRepo.getInstalledLaunchableApps() }
 
                 iviAppInfo = iviApp
@@ -301,6 +323,8 @@ class MainActivity : AppCompatActivity() {
                 if (lazyMedia != null) boundCardPackages.add(lazyMedia.packageName)
                 if (youtube != null) boundCardPackages.add(youtube.packageName)
                 if (googlePlay != null) boundCardPackages.add(googlePlay.packageName)
+                if (netflix != null) boundCardPackages.add(netflix.packageName)
+                if (chrome != null) boundCardPackages.add(chrome.packageName)
 
                 // 在后台线程裁剪背景图（生成9个图块：0=IVI, 1-8=右侧卡片）
                 val cutter = withContext(Dispatchers.IO) {
@@ -340,7 +364,7 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     // 分配应用到卡片
-                    assignAppsToCards(allApps, lazyMedia, youtube, googlePlay)
+                    assignAppsToCards(allApps, lazyMedia, youtube, googlePlay, netflix, chrome)
                     // 设置彩色渐变覆盖层
                     applyOverlays()
                     // 设置D-pad焦点导航
@@ -363,20 +387,37 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * 将应用分配到上排和中排卡片
-     * 索引0=上左(LazyMedia), 1=上中(YouTube), 2=上右(随机),
-     * 3=中左(Google Play), 4=中右(随机)
+     * 索引0=上左(LazyMedia), 1=上中(YouTube), 2=上右(Netflix),
+     * 3=中左(Google Play), 4=中右(Chrome)
+     * 当包名匹配不到时，用应用名称关键字模糊匹配
      */
     private fun assignAppsToCards(
         allApps: List<AppRepository.AppInfo>,
         lazyMedia: AppRepository.AppInfo?,
         youtube: AppRepository.AppInfo?,
-        googlePlay: AppRepository.AppInfo?
+        googlePlay: AppRepository.AppInfo?,
+        netflix: AppRepository.AppInfo?,
+        chrome: AppRepository.AppInfo?
     ) {
-        bindAppToCard(0, lazyMedia, "LazyMedia")
-        bindAppToCard(1, youtube, "YouTube")
-        bindRandomAppToCard(2, allApps)
-        bindAppToCard(3, googlePlay, "Google Play")
-        bindRandomAppToCard(4, allApps)
+        bindAppToCard(0, lazyMedia ?: findAppByLabel(allApps, listOf("lazymedia", "deluxe")), "LazyMedia Deluxe")
+        bindAppToCard(1, youtube ?: findAppByLabel(allApps, listOf("youtube")), "YouTube")
+        bindAppToCard(2, netflix ?: findAppByLabel(allApps, listOf("netflix")), "Netflix")
+        bindAppToCard(3, googlePlay ?: findAppByLabel(allApps, listOf("google play", "play store")), "Google Play")
+        bindAppToCard(4, chrome ?: findAppByLabel(allApps, listOf("chrome")), "Chrome")
+    }
+
+    /**
+     * 通过应用名称关键字模糊匹配已安装应用
+     * @param allApps 所有已安装应用列表
+     * @param keywords 匹配关键字列表（全部转小写比较，命中任一即匹配）
+     * @return 第一个匹配到的应用，找不到返回 null
+     */
+    private fun findAppByLabel(allApps: List<AppRepository.AppInfo>, keywords: List<String>): AppRepository.AppInfo? {
+        val lowerKeywords = keywords.map { it.lowercase() }
+        return allApps.firstOrNull { app ->
+            val lowerLabel = app.label.lowercase()
+            lowerKeywords.any { keyword -> keyword in lowerLabel }
+        }
     }
 
     /**
@@ -399,7 +440,7 @@ class MainActivity : AppCompatActivity() {
             card.setAppInfo(null)
             card.setLabel(fallbackLabel)
             card.onCardClicked = {
-                Toast.makeText(this, R.string.app_not_installed, Toast.LENGTH_SHORT).show()
+                showDarkToast(R.string.app_not_installed)
             }
         }
     }
@@ -487,12 +528,17 @@ class MainActivity : AppCompatActivity() {
 
     /** 设置 D-pad 焦点导航的关系链 */
     private fun setupFocusNavigation() {
-        // IVI 面板 ↔ 上排左卡片（cardViews[0]）
-        iviCard.nextFocusRightId = cardViews[0].id
-        cardViews[0].nextFocusLeftId = iviCard.id
-
-        // IVI 面板 ↔ 中排左卡片（cardViews[3]）
-        cardViews[3].nextFocusLeftId = iviCard.id
+        // 向右循环链路：ivi -> Lazy -> YouTube -> Netflix -> Google -> Chrome -> 应用列表 -> 设置 -> 文件管理 -> ivi
+        val chain = listOf(
+            iviCard,
+            cardViews[0], cardViews[1], cardViews[2],
+            cardViews[3], cardViews[4],
+            cardViews[5], cardViews[6], cardViews[7]
+        )
+        for (i in chain.indices) {
+            // 仅向右：当前 -> 下一个（循环），向左由系统默认布局导航处理
+            chain[i].nextFocusRightId = chain[(i + 1) % chain.size].id
+        }
     }
 
     // ─── System Functions ─────────────────────────────────────────
@@ -520,28 +566,20 @@ class MainActivity : AppCompatActivity() {
             }
 
             if (apps.isEmpty()) {
-                Toast.makeText(this@MainActivity, "没有找到可用的应用", Toast.LENGTH_SHORT).show()
+                showDarkToast("没有找到可用的应用")
                 return@launch
             }
 
-            val appNames = apps.map { it.label }.toTypedArray()
-
-            android.app.AlertDialog.Builder(this@MainActivity)
-                .setTitle(R.string.add_app)
-                .setItems(appNames) { _, which ->
-                    val selected = apps[which]
-                    if (quickStore.addQuickApp(selected.packageName)) {
-                        quickBar.refresh()
-                    } else {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "应用已存在或无法添加",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+            showAppPickerDialog(
+                title = getString(R.string.add_app),
+                apps = apps
+            ) { selected ->
+                if (quickStore.addQuickApp(selected.packageName)) {
+                    quickBar.refresh()
+                } else {
+                    showDarkToast("应用已存在或无法添加")
                 }
-                .setNegativeButton(android.R.string.cancel, null)
-                .show()
+            }
         }
     }
 
@@ -554,26 +592,103 @@ class MainActivity : AppCompatActivity() {
 
             if (apps.isEmpty()) return@launch
 
-            val appNames = apps.map { it.label }.toTypedArray()
+            showAppPickerDialog(
+                title = getString(R.string.select_app),
+                apps = apps
+            ) { selected ->
+                // 持久化用户选择
+                val prefs = getSharedPreferences("card_bindings", MODE_PRIVATE)
+                prefs.edit().putString("card_${cardIndex}_pkg", selected.packageName).apply()
 
-            android.app.AlertDialog.Builder(this@MainActivity)
-                .setTitle(R.string.select_app)
-                .setItems(appNames) { _, which ->
-                    val selected = apps[which]
-                    // 持久化用户选择
-                    val prefs = getSharedPreferences("card_bindings", MODE_PRIVATE)
-                    prefs.edit().putString("card_${cardIndex}_pkg", selected.packageName).apply()
-
-                    // 立即刷新卡片
-                    cardViews[cardIndex].setAppInfo(selected)
-                    cardViews[cardIndex].onCardClicked = {
-                        val intent = packageManager.getLaunchIntentForPackage(selected.packageName)
-                        if (intent != null) startActivity(intent)
-                    }
+                // 立即刷新卡片
+                cardViews[cardIndex].setAppInfo(selected)
+                cardViews[cardIndex].onCardClicked = {
+                    val intent = packageManager.getLaunchIntentForPackage(selected.packageName)
+                    if (intent != null) startActivity(intent)
                 }
-                .setNegativeButton(android.R.string.cancel, null)
-                .show()
+            }
         }
+    }
+
+    /**
+     * 自定义应用选择对话框 — 深色圆角面板 + 自绘列表行
+     *
+     * 不用系统 setItems()，因为 AOSP TV 上系统列表项会渲染成深蓝底+白边。
+     * 这里完全自绘，与深色主题统一。
+     */
+    private fun showAppPickerDialog(
+        title: String,
+        apps: List<AppRepository.AppInfo>,
+        onSelect: (AppRepository.AppInfo) -> Unit
+    ) {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#141A21"))
+                cornerRadius = dpToPx(12).toFloat()
+                setStroke(dpToPx(1), Color.parseColor("#2A3442"))
+            }
+            setPadding(dpToPx(24), dpToPx(16), dpToPx(24), dpToPx(16))
+        }
+
+        // 标题
+        panel.addView(TextView(this).apply {
+            text = title
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            setPadding(0, 0, 0, dpToPx(12))
+        })
+
+        // 应用列表行
+        apps.forEach { app ->
+            val row = TextView(this).apply {
+                text = app.label
+                setTextColor(Color.parseColor("#F2F5F9"))
+                textSize = 15f
+                setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
+                isFocusable = true
+                isFocusableInTouchMode = true
+                isClickable = true
+                background = GradientDrawable().apply {
+                    cornerRadius = dpToPx(8).toFloat()
+                    setColor(Color.TRANSPARENT)
+                    setStroke(dpToPx(2), Color.TRANSPARENT)
+                }
+                setOnClickListener {
+                    onSelect(app)
+                    pickerDialog?.dismiss()
+                }
+            }
+            row.onFocusChangeListener = View.OnFocusChangeListener { view, hasFocus ->
+                val bg = view.background as GradientDrawable
+                if (hasFocus) {
+                    bg.setColor(Color.parseColor("#1E2530"))
+                    bg.setStroke(dpToPx(2), Color.WHITE)
+                } else {
+                    bg.setColor(Color.TRANSPARENT)
+                    bg.setStroke(dpToPx(2), Color.TRANSPARENT)
+                }
+            }
+            panel.addView(row)
+        }
+
+        // 取消按钮
+        panel.addView(TextView(this).apply {
+            text = getString(android.R.string.cancel)
+            setTextColor(Color.parseColor("#8A94A6"))
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setPadding(0, dpToPx(10), 0, 0)
+            setOnClickListener { pickerDialog?.dismiss() }
+        })
+
+        val dlg = android.app.Dialog(this, R.style.Theme_AppPickerDialog)
+        dlg.setContentView(panel)
+        dlg.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        pickerDialog = dlg
+        dlg.show()
+        // 第一个应用行获得焦点
+        (panel.getChildAt(1) as? View)?.requestFocus()
     }
 
     // ─── Lifecycle ─────────────────────────────────────────────
@@ -604,12 +719,21 @@ class MainActivity : AppCompatActivity() {
             val lmPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_LAZYMEDIA)?.packageName }
             val ytPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_YOUTUBE)?.packageName }
             val gpPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_GOOGLE_PLAY)?.packageName }
+            val nfPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_NETFLIX)?.packageName }
+            val chPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_CHROME)?.packageName }
             if (lmPkg != null) boundCardPackages.add(lmPkg)
             if (ytPkg != null) boundCardPackages.add(ytPkg)
             if (gpPkg != null) boundCardPackages.add(gpPkg)
+            if (nfPkg != null) boundCardPackages.add(nfPkg)
+            if (chPkg != null) boundCardPackages.add(chPkg)
 
-            bindRandomAppToCard(2, apps)
-            bindRandomAppToCard(4, apps)
+            // 刷新 Netflix 和 Chrome 卡片（不再随机）
+            val netflix = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_NETFLIX) }
+                ?: findAppByLabel(apps, listOf("netflix"))
+            bindAppToCard(2, netflix, "Netflix")
+            val chrome = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_CHROME) }
+                ?: findAppByLabel(apps, listOf("chrome"))
+            bindAppToCard(4, chrome, "Chrome")
         }
     }
 

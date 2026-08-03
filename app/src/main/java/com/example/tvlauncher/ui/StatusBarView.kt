@@ -23,11 +23,13 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 顶部状态栏 — 显示 WiFi 信号强度、时间、星期和日期
+ * 顶部状态栏 — 显示投影仪图标、WiFi 信号强度、时间、星期和日期
  *
- * 结构：水平 LinearLayout，weight 弹簧分隔 WiFi（左）和时间组（右）
- *   - WiFi 图标（40dp，#E6E6E6）
+ * 结构：水平 LinearLayout，投影仪图标固定左侧，weight 弹簧分隔 WiFi（中偏右）和时间组（右）
+ *   - 投影仪图标（36dp，#E6E6E6）
  *   - 弹性占位 View（weight=1）
+ *   - WiFi 图标（40dp，#E6E6E6）
+ *   - 弹性占位 View（weight=0.5）
  *   - 时间 TextClock（24sp，白色，自动 12/24 小时制）
  *   - 星期文字（16sp，100%白色）
  *   - 日期文字（16sp，100%白色）
@@ -69,8 +71,15 @@ class StatusBarView @JvmOverloads constructor(
 
         orientation = HORIZONTAL
         gravity = Gravity.BOTTOM
-        // 整体向左移动 40dp
-        setPadding(0, 0, context.dpToPx(40), 0)
+
+        // ─── 投影仪图标 32x32dp，左上角固定 ───
+        addView(ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setImageResource(R.drawable.ic_projector)
+            layoutParams = LayoutParams(context.dpToPx(44), context.dpToPx(41)).apply {
+                gravity = Gravity.CENTER_VERTICAL
+            }
+        })
 
         // ─── 弹性占位（左侧）— 把 WiFi 推到中间偏右 ───
         addView(android.view.View(context).apply {

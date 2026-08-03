@@ -3,11 +3,13 @@ package com.example.tvlauncher.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -23,7 +25,7 @@ import com.example.tvlauncher.util.setSafeOnLongClickListener
  *   - 背景图片（从全局背景图裁剪的图块）
  *   - 半透明彩色覆盖层（纯色或渐变，带 alpha 通道）
  *   - 应用图标 + 应用名称
- *   - 聚焦时的白色矩形边框
+ *   - 聚焦时的白色矩形边框 + Google 原生双层阴影
  *
  * 支持两种布局方向：
  *   - 竖卡（iconAbove=true）：图标在上，文字在下
@@ -41,14 +43,36 @@ class LauncherCardView @JvmOverloads constructor(
     private val borderView: View
     private var contentContainer: LinearLayout? = null
 
+    // 在 onSizeChanged 中初始化的轮廓半径（dp 转 px）
+    private var outlineRadius = 0f
+
     var onCardClicked: (() -> Unit)? = null
     var onCardLongClicked: (() -> Unit)? = null
 
     init {
         setBackgroundColor(Color.TRANSPARENT)
-        // 不裁剪子视图，允许聚焦放大时边框超出卡片边界
+        // 不裁切子视图，允许聚焦放大时边框超出卡片边界
         clipChildren = false
         clipToPadding = false
+
+        // ─── Google 原生双层阴影（elevation + OutlineProvider） ───
+        // spot 接触阴影 40% | ambient 环境阴影 12% | 比例 ≈ 3.3:1
+        outlineSpotShadowColor = Color.argb(0x66, 0, 0, 0)   // rgba(0,0,0, 0.4) ≈ 0x66
+        outlineAmbientShadowColor = Color.argb(0x1F, 0, 0, 0) // rgba(0,0,0, 0.12) ≈ 0x1F
+
+        // 设置圆角轮廓，系统据此绘制阴影形状
+        outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                if (outlineRadius > 0f) {
+                    outline.setRoundRect(
+                        0, 0, view.width, view.height,
+                        outlineRadius
+                    )
+                }
+            }
+        }
+        // clipToOutline = false：阴影用轮廓形状，但内容（图标/文字）不被裁切
+        clipToOutline = false
 
         // ─── 第1层：半透明彩色覆盖层（位于背景图之上）───
         // 优先级低于 icon/label/border，高于背景图
@@ -69,7 +93,7 @@ class LauncherCardView @JvmOverloads constructor(
         labelView = TextView(context).apply {
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
             gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -77,7 +101,7 @@ class LauncherCardView @JvmOverloads constructor(
             isClickable = false
         }
 
-        // ─── 第4层（最上层）：聚焦白色边框，默认隐藏 ───
+        // ─── 最上层：聚焦白色边框，默认隐藏 ───
         borderView = View(context).apply {
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
             val border = GradientDrawable().apply {
@@ -110,16 +134,15 @@ class LauncherCardView @JvmOverloads constructor(
         // 默认使用竖卡布局
         setupVerticalLayout()
 
-        // ─── 聚焦状态切换：放大动画 + 白色边框切换 ───
+        // ─── 聚焦状态切换：放大动画 + 原生阴影 + 白色边框 ───
         onFocusChangeListener = OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
-                // 提升 Z 轴高度，防止放大后被相邻/上下行卡片遮挡
-                elevation = context.dpToPx(8).toFloat()
-                // 放大至105%，150ms弹性动画
+                // 提升 Z 轴高度，触发原生双层阴影，同时防止放大后被相邻卡片遮挡
+                elevation = context.dpToPx(12).toFloat()
+                // 放大至110%，150ms弹性动画
                 animate().scaleX(1.10f).scaleY(1.10f).setDuration(150)
                     .setInterpolator(android.view.animation.DecelerateInterpolator())
                     .start()
-                // 显示白色矩形边框
                 borderView.visibility = View.VISIBLE
             } else {
                 // 恢复 Z 轴高度
@@ -128,10 +151,17 @@ class LauncherCardView @JvmOverloads constructor(
                 animate().scaleX(1.0f).scaleY(1.0f).setDuration(150)
                     .setInterpolator(android.view.animation.DecelerateInterpolator())
                     .start()
-                // 隐藏边框
                 borderView.visibility = View.INVISIBLE
             }
         }
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        // 初始化圆角轮廓半径：与卡片视觉圆角（8dp）一致，系统据此绘制阴影
+        outlineRadius = context.dpToPx(8).toFloat()
+        // 触发 outline 重新计算
+        invalidateOutline()
     }
 
     /**
@@ -152,9 +182,9 @@ class LauncherCardView @JvmOverloads constructor(
         }
     }
 
-    // ─── 竖卡布局：图标在上（44x44dp），文字在下 ───
+    // ─── 竖卡布局：图标在上（56x56dp），文字在下 ───
     private fun setupVerticalLayout() {
-        val margin = context.dpToPx(12)
+        val margin = context.dpToPx(14)
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -170,7 +200,7 @@ class LauncherCardView @JvmOverloads constructor(
         }
         container.addView(
             iconView,
-            LinearLayout.LayoutParams(context.dpToPx(44), context.dpToPx(44))
+            LinearLayout.LayoutParams(context.dpToPx(56), context.dpToPx(56))
         )
         container.addView(
             labelView,
@@ -178,15 +208,15 @@ class LauncherCardView @JvmOverloads constructor(
                 LayoutParams.WRAP_CONTENT,
                 LayoutParams.WRAP_CONTENT
             ).apply {
-                topMargin = context.dpToPx(6)
+                topMargin = context.dpToPx(8)
             })
         addView(container)
         contentContainer = container
     }
 
-    // ─── 横卡布局：图标在左（36x36dp），文字在右 ───
+    // ─── 横卡布局：图标在左（48x48dp），文字在右 ───
     private fun setupHorizontalLayout() {
-        val margin = context.dpToPx(12)
+        val margin = context.dpToPx(14)
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -202,7 +232,7 @@ class LauncherCardView @JvmOverloads constructor(
         }
         container.addView(
             iconView,
-            LinearLayout.LayoutParams(context.dpToPx(36), context.dpToPx(36))
+            LinearLayout.LayoutParams(context.dpToPx(48), context.dpToPx(48))
         )
         container.addView(
             labelView,
@@ -210,7 +240,7 @@ class LauncherCardView @JvmOverloads constructor(
                 LayoutParams.WRAP_CONTENT,
                 LayoutParams.WRAP_CONTENT
             ).apply {
-                leftMargin = context.dpToPx(10)
+                leftMargin = context.dpToPx(12)
             })
         addView(container)
         contentContainer = container

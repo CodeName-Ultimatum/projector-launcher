@@ -5,7 +5,7 @@
 -->
 <resources>
     <!-- 应用名称 -->
-    <string name="app_name">TV Launcher</string>
+    <string name="app_name">投影仪桌面(开发版)</string>
     <!-- IVI面板默认标签 -->
     <string name="ivi_label">IVI</string>
     <!-- 下排系统功能卡片标签 -->
