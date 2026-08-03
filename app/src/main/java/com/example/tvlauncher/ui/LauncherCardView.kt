@@ -19,6 +19,7 @@ import com.example.tvlauncher.data.AppRepository
 import com.example.tvlauncher.util.dpToPx
 import com.example.tvlauncher.util.setSafeOnClickListener
 import com.example.tvlauncher.util.setSafeOnLongClickListener
+import com.bumptech.glide.Glide
 
 /**
  * 启动器卡片视图 — 每张卡片包含：
@@ -293,5 +294,12 @@ class LauncherCardView @JvmOverloads constructor(
     /** 直接设置图标资源 */
     fun setIconResource(resId: Int) {
         iconView.setImageResource(resId)
+    }
+
+    /** 使用 Glide 加载网络图标 */
+    fun setIconUrl(url: String) {
+        Glide.with(context)
+            .load(url)
+            .into(iconView)
     }
 }

@@ -14,6 +14,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.tvlauncher.data.AppRepository
+import com.example.tvlauncher.data.CardConfig
 import com.example.tvlauncher.data.CardDataSource
 import com.example.tvlauncher.data.LocalCardDataSource
 import com.example.tvlauncher.data.QuickAppsStore
@@ -277,6 +278,11 @@ class MainActivity : AppCompatActivity() {
             }
 
             lifecycleScope.launch {
+                // 从数据源获取卡片配置（后端未接入时返回空列表）
+                val cardConfigs = withContext(Dispatchers.IO) {
+                    cardDataSource.getCardConfigs()
+                }
+
                 // 在后台线程裁剪背景图（生成9个图块：0=IVI, 1-8=右侧卡片）
                 val cutter = withContext(Dispatchers.IO) {
                     try {
@@ -309,12 +315,74 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
+                    // 应用后端卡片配置（当前为空列表，卡片保持占位）
+                    cardConfigs.forEach { applyCardConfig(it) }
+
                     // 设置彩色渐变覆盖层
                     applyOverlays()
                     // 设置D-pad焦点导航
                     setupFocusNavigation()
                 }
             }
+        }
+    }
+
+    // ─── Card Config Binding ─────────────────────────────────────
+
+    /** 根据卡槽索引返回对应卡片视图（0=IVI, 1-3=上排, 4-5=中排），无效索引返回 null */
+    private fun cardForSlot(slotIndex: Int): LauncherCardView? {
+        return when (slotIndex) {
+            0 -> iviCard
+            1 -> cardViews[0]
+            2 -> cardViews[1]
+            3 -> cardViews[2]
+            4 -> cardViews[3]
+            5 -> cardViews[4]
+            else -> null
+        }
+    }
+
+    /** 将后端配置应用到单张卡片。null 字段跳过，卡片保持占位 */
+    private fun applyCardConfig(config: CardConfig) {
+        val card = cardForSlot(config.slotIndex) ?: return
+
+        // 应用包名：查到则设置应用信息，查不到则保持占位
+        val pkg = config.packageName
+        if (pkg != null) {
+            val appInfo = appRepo.getAppInfo(pkg)
+            if (appInfo != null) {
+                card.setAppInfo(appInfo)
+                card.onCardClicked = {
+                    val intent = packageManager.getLaunchIntentForPackage(pkg)
+                    if (intent != null) startActivity(intent)
+                }
+                return
+            }
+        }
+
+        // 未绑定应用时，点击卡片显示未配置提示
+        card.onCardClicked = {
+            showDarkToast(R.string.not_configured)
+        }
+
+        // 配置了自定义名称
+        config.label?.let { card.setLabel(it) }
+
+        // 配置了图标URL
+        config.iconUrl?.let { url -> card.setIconUrl(url) }
+
+        // 配置了覆盖层颜色
+        if (config.overlayStartColor != null && config.overlayEndColor != null) {
+            val orientation = when (config.overlayOrientation) {
+                "LEFT_RIGHT" -> android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
+                "TOP_BOTTOM" -> android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM
+                else -> android.graphics.drawable.GradientDrawable.Orientation.TL_BR
+            }
+            card.setOverlayGradient(
+                Color.parseColor(config.overlayStartColor),
+                Color.parseColor(config.overlayEndColor),
+                orientation
+            )
         }
     }
 
