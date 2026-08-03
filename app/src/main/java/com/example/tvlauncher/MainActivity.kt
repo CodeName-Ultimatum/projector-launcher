@@ -14,6 +14,8 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.tvlauncher.data.AppRepository
+import com.example.tvlauncher.data.CardDataSource
+import com.example.tvlauncher.data.LocalCardDataSource
 import com.example.tvlauncher.data.QuickAppsStore
 import com.example.tvlauncher.ui.LauncherCardView
 import com.example.tvlauncher.ui.QuickBarView
@@ -56,6 +58,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var quickStore: QuickAppsStore
     private var backgroundCutter: BackgroundCutter? = null
 
+    /** 卡片配置数据源（后端接入前使用本地空实现） */
+    private lateinit var cardDataSource: CardDataSource
+
     /** 当前弹出的应用选择对话框 */
     private var pickerDialog: android.app.Dialog? = null
 
@@ -65,30 +70,9 @@ class MainActivity : AppCompatActivity() {
     /** IVI面板卡片 */
     private lateinit var iviCard: LauncherCardView
 
-    // ─── 应用分配状态 ────────────────────────────────────────────
-
-    /** IVI应用信息，null表示未安装 */
-    private var iviAppInfo: AppRepository.AppInfo? = null
-
-    /** 已被分配到卡片的包名集合，用于排除随机分配时的重复 */
-    private val boundCardPackages = mutableSetOf<String>()
-
     // ─── 常量 ─────────────────────────────────────────────────────
 
     companion object {
-        // 固定分配的应用包名
-        const val PKG_LAZYMEDIA = "com.lazymedia.deluxe"
-        const val PKG_YOUTUBE = "com.google.android.youtube.tv"
-        const val PKG_GOOGLE_PLAY = "com.android.vending"
-        const val PKG_NETFLIX = "com.netflix.ninja"
-        const val PKG_CHROME = "com.android.chrome"
-
-        /** IVI 应用的候选包名列表（按顺序尝试查找） */
-        val IVI_CANDIDATE_PACKAGES = listOf(
-            "ru.ivi.client",
-            "ru.ivi.client.tv"
-        )
-
         /** 下排固定功能卡片的标签资源 ID */
         val SYSTEM_CARD_LABELS = listOf(
             R.string.app_list,
@@ -114,6 +98,7 @@ class MainActivity : AppCompatActivity() {
 
         appRepo = AppRepository(this)
         quickStore = QuickAppsStore(this)
+        cardDataSource = LocalCardDataSource()
 
         setupStatusBar()
         setupQuickBar()
@@ -182,16 +167,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         iviCard.onCardClicked = {
-            if (iviAppInfo != null) {
-                val intent = packageManager.getLaunchIntentForPackage(iviAppInfo!!.packageName)
-                if (intent != null) {
-                    startActivity(intent)
-                } else {
-                    showDarkToast("应用无法启动")
-                }
-            } else {
-                showDarkToast(R.string.ivi_not_installed)
-            }
+            showDarkToast(R.string.not_configured)
         }
 
         val mainContent = findViewById<LinearLayout>(R.id.main_content)
@@ -261,10 +237,6 @@ class MainActivity : AppCompatActivity() {
                 2 -> card.onCardClicked = { openFileManager() }
             }
         }
-
-        // 可替换卡片（长按弹出应用选择）：上排右 = cardViews[2]，中排右 = cardViews[4]
-        cardViews[2].onCardLongClicked = { showReplaceAppDialog(2) }
-        cardViews[4].onCardLongClicked = { showReplaceAppDialog(4) }
     }
 
     /** 创建一张卡片并加入 cardViews 列表 */
@@ -305,27 +277,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             lifecycleScope.launch {
-                // 在后台线程查询应用信息
-                val iviApp = withContext(Dispatchers.IO) { findIviApp() }
-                val lazyMedia = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_LAZYMEDIA) }
-                val youtube = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_YOUTUBE) }
-                val googlePlay = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_GOOGLE_PLAY) }
-                val netflix = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_NETFLIX) }
-                val chrome = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_CHROME) }
-                val allApps = withContext(Dispatchers.IO) { appRepo.getInstalledLaunchableApps() }
-
-                iviAppInfo = iviApp
-
-                // 构建已绑定的包名集合（用于随机分配时排除）
-                boundCardPackages.clear()
-                boundCardPackages.add(packageName) // 排除自身
-                if (iviApp != null) boundCardPackages.add(iviApp.packageName)
-                if (lazyMedia != null) boundCardPackages.add(lazyMedia.packageName)
-                if (youtube != null) boundCardPackages.add(youtube.packageName)
-                if (googlePlay != null) boundCardPackages.add(googlePlay.packageName)
-                if (netflix != null) boundCardPackages.add(netflix.packageName)
-                if (chrome != null) boundCardPackages.add(chrome.packageName)
-
                 // 在后台线程裁剪背景图（生成9个图块：0=IVI, 1-8=右侧卡片）
                 val cutter = withContext(Dispatchers.IO) {
                     try {
@@ -358,132 +309,12 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    // 更新IVI卡片的图标和名称
-                    if (iviApp != null) {
-                        iviCard.setAppInfo(iviApp)
-                    }
-
-                    // 分配应用到卡片
-                    assignAppsToCards(allApps, lazyMedia, youtube, googlePlay, netflix, chrome)
                     // 设置彩色渐变覆盖层
                     applyOverlays()
                     // 设置D-pad焦点导航
                     setupFocusNavigation()
                 }
             }
-        }
-    }
-
-    /** 在IVI候选包名列表中查找第一个已安装的应用 */
-    private fun findIviApp(): AppRepository.AppInfo? {
-        for (pkg in IVI_CANDIDATE_PACKAGES) {
-            val info = appRepo.getAppInfo(pkg)
-            if (info != null) return info
-        }
-        return null
-    }
-
-    // ─── App Assignment ────────────────────────────────────────────
-
-    /**
-     * 将应用分配到上排和中排卡片
-     * 索引0=上左(LazyMedia), 1=上中(YouTube), 2=上右(Netflix),
-     * 3=中左(Google Play), 4=中右(Chrome)
-     * 当包名匹配不到时，用应用名称关键字模糊匹配
-     */
-    private fun assignAppsToCards(
-        allApps: List<AppRepository.AppInfo>,
-        lazyMedia: AppRepository.AppInfo?,
-        youtube: AppRepository.AppInfo?,
-        googlePlay: AppRepository.AppInfo?,
-        netflix: AppRepository.AppInfo?,
-        chrome: AppRepository.AppInfo?
-    ) {
-        bindAppToCard(0, lazyMedia ?: findAppByLabel(allApps, listOf("lazymedia", "deluxe")), "LazyMedia Deluxe")
-        bindAppToCard(1, youtube ?: findAppByLabel(allApps, listOf("youtube")), "YouTube")
-        bindAppToCard(2, netflix ?: findAppByLabel(allApps, listOf("netflix")), "Netflix")
-        bindAppToCard(3, googlePlay ?: findAppByLabel(allApps, listOf("google play", "play store")), "Google Play")
-        bindAppToCard(4, chrome ?: findAppByLabel(allApps, listOf("chrome")), "Chrome")
-    }
-
-    /**
-     * 通过应用名称关键字模糊匹配已安装应用
-     * @param allApps 所有已安装应用列表
-     * @param keywords 匹配关键字列表（全部转小写比较，命中任一即匹配）
-     * @return 第一个匹配到的应用，找不到返回 null
-     */
-    private fun findAppByLabel(allApps: List<AppRepository.AppInfo>, keywords: List<String>): AppRepository.AppInfo? {
-        val lowerKeywords = keywords.map { it.lowercase() }
-        return allApps.firstOrNull { app ->
-            val lowerLabel = app.label.lowercase()
-            lowerKeywords.any { keyword -> keyword in lowerLabel }
-        }
-    }
-
-    /**
-     * 将指定应用绑定到卡片
-     * @param cardIndex 卡片索引
-     * @param app 应用信息，null表示未安装
-     * @param fallbackLabel 未安装时的占位文字
-     */
-    private fun bindAppToCard(cardIndex: Int, app: AppRepository.AppInfo?, fallbackLabel: String) {
-        if (cardIndex >= cardViews.size) return
-        val card = cardViews[cardIndex]
-
-        if (app != null) {
-            card.setAppInfo(app)
-            card.onCardClicked = {
-                val intent = packageManager.getLaunchIntentForPackage(app.packageName)
-                if (intent != null) startActivity(intent)
-            }
-        } else {
-            card.setAppInfo(null)
-            card.setLabel(fallbackLabel)
-            card.onCardClicked = {
-                showDarkToast(R.string.app_not_installed)
-            }
-        }
-    }
-
-    /**
-     * 为卡片随机分配一个未绑定的应用
-     * 优先使用 SharedPreferences 中用户手动选择的绑定
-     * 没有手动绑定则从可用应用中随机选择
-     */
-    private fun bindRandomAppToCard(cardIndex: Int, allApps: List<AppRepository.AppInfo>) {
-        if (cardIndex >= cardViews.size) return
-        val card = cardViews[cardIndex]
-
-        // 检查是否有用户手动选择的绑定（通过长按设置）
-        val prefs = getSharedPreferences("card_bindings", MODE_PRIVATE)
-        val savedPkg = prefs.getString("card_${cardIndex}_pkg", null)
-
-        if (savedPkg != null) {
-            val savedApp = appRepo.getAppInfo(savedPkg)
-            if (savedApp != null) {
-                card.setAppInfo(savedApp)
-                card.onCardClicked = {
-                    val intent = packageManager.getLaunchIntentForPackage(savedApp.packageName)
-                    if (intent != null) startActivity(intent)
-                }
-                boundCardPackages.add(savedApp.packageName)
-                return
-            }
-        }
-
-        // 从排除已绑定包名后的可用应用中随机选择
-        val available = allApps.filter { it.packageName !in boundCardPackages }
-        if (available.isNotEmpty()) {
-            val randomApp = available.random()
-            card.setAppInfo(randomApp)
-            boundCardPackages.add(randomApp.packageName)
-            card.onCardClicked = {
-                val intent = packageManager.getLaunchIntentForPackage(randomApp.packageName)
-                if (intent != null) startActivity(intent)
-            }
-        } else {
-            card.setAppInfo(null)
-            card.onCardClicked = null
         }
     }
 
@@ -583,33 +414,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 弹出应用选择对话框，替换指定卡片上的应用（长按触发） */
-    private fun showReplaceAppDialog(cardIndex: Int) {
-        lifecycleScope.launch {
-            val apps = withContext(Dispatchers.IO) {
-                appRepo.getInstalledLaunchableApps()
-            }
-
-            if (apps.isEmpty()) return@launch
-
-            showAppPickerDialog(
-                title = getString(R.string.select_app),
-                apps = apps
-            ) { selected ->
-                // 持久化用户选择
-                val prefs = getSharedPreferences("card_bindings", MODE_PRIVATE)
-                prefs.edit().putString("card_${cardIndex}_pkg", selected.packageName).apply()
-
-                // 立即刷新卡片
-                cardViews[cardIndex].setAppInfo(selected)
-                cardViews[cardIndex].onCardClicked = {
-                    val intent = packageManager.getLaunchIntentForPackage(selected.packageName)
-                    if (intent != null) startActivity(intent)
-                }
-            }
-        }
-    }
-
     /**
      * 自定义应用选择对话框 — 深色圆角面板 + 自绘列表行
      *
@@ -697,44 +501,6 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // 重新开始接收时间和WiFi广播
         statusBar.startListening()
-
-        // 刷新随机卡片（应用可能被安装/卸载）
-        lifecycleScope.launch {
-            val apps = withContext(Dispatchers.IO) {
-                appRepo.getInstalledLaunchableApps()
-            }
-
-            // 刷新 IVI 应用状态
-            val iviApp = withContext(Dispatchers.IO) { findIviApp() }
-            iviAppInfo = iviApp
-            if (iviApp != null) {
-                iviCard.setAppInfo(iviApp)
-            }
-
-            // 重建排除列表
-            boundCardPackages.clear()
-            boundCardPackages.add(packageName)
-            if (iviAppInfo != null) boundCardPackages.add(iviAppInfo!!.packageName)
-
-            val lmPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_LAZYMEDIA)?.packageName }
-            val ytPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_YOUTUBE)?.packageName }
-            val gpPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_GOOGLE_PLAY)?.packageName }
-            val nfPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_NETFLIX)?.packageName }
-            val chPkg = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_CHROME)?.packageName }
-            if (lmPkg != null) boundCardPackages.add(lmPkg)
-            if (ytPkg != null) boundCardPackages.add(ytPkg)
-            if (gpPkg != null) boundCardPackages.add(gpPkg)
-            if (nfPkg != null) boundCardPackages.add(nfPkg)
-            if (chPkg != null) boundCardPackages.add(chPkg)
-
-            // 刷新 Netflix 和 Chrome 卡片（不再随机）
-            val netflix = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_NETFLIX) }
-                ?: findAppByLabel(apps, listOf("netflix"))
-            bindAppToCard(2, netflix, "Netflix")
-            val chrome = withContext(Dispatchers.IO) { appRepo.getAppInfo(PKG_CHROME) }
-                ?: findAppByLabel(apps, listOf("chrome"))
-            bindAppToCard(4, chrome, "Chrome")
-        }
     }
 
     override fun onPause() {
