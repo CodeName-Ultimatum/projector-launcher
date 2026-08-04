@@ -11,11 +11,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
-import com.example.tvlauncher.R
-import com.example.tvlauncher.data.AppRepository
 import com.example.tvlauncher.util.dpToPx
 import com.example.tvlauncher.util.setSafeOnClickListener
 import com.example.tvlauncher.util.setSafeOnLongClickListener
@@ -23,14 +18,9 @@ import com.bumptech.glide.Glide
 
 /**
  * 启动器卡片视图 — 每张卡片包含：
- *   - 背景图片（从全局背景图裁剪的图块）
+ *   - 背景图片（从全局背景图裁剪的图块，或通过 setCardImageUrl 加载的整图）
  *   - 半透明彩色覆盖层（纯色或渐变，带 alpha 通道）
- *   - 应用图标 + 应用名称
  *   - 聚焦时的白色矩形边框 + Google 原生双层阴影
- *
- * 支持两种布局方向：
- *   - 竖卡（iconAbove=true）：图标在上，文字在下
- *   - 横卡（iconAbove=false）：图标在左，文字在右
  */
 class LauncherCardView @JvmOverloads constructor(
     context: Context,
@@ -38,11 +28,8 @@ class LauncherCardView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
-    private val iconView: ImageView
-    private val labelView: TextView
     private val overlayLayer: View
     private val borderView: View
-    private var contentContainer: LinearLayout? = null
 
     // 在 onSizeChanged 中初始化的轮廓半径（dp 转 px）
     private var outlineRadius = 0f
@@ -72,35 +59,15 @@ class LauncherCardView @JvmOverloads constructor(
                 }
             }
         }
-        // clipToOutline = false：阴影用轮廓形状，但内容（图标/文字）不被裁切
+        // clipToOutline = false：阴影用轮廓形状，但背景图片/覆盖层不被裁切
         clipToOutline = false
 
         // ─── 第1层：半透明彩色覆盖层（位于背景图之上）───
-        // 优先级低于 icon/label/border，高于背景图
+        // 优先级低于 border，高于背景图
         overlayLayer = View(context).apply {
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         }
         addView(overlayLayer)
-
-        // ─── 应用图标 ───
-        iconView = ImageView(context).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            setBackgroundColor(Color.TRANSPARENT)
-            isFocusable = false
-            isClickable = false
-        }
-
-        // ─── 应用名称 ───
-        labelView = TextView(context).apply {
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.TRANSPARENT)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
-            gravity = Gravity.CENTER
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            isFocusable = false
-            isClickable = false
-        }
 
         // ─── 最上层：聚焦白色边框，默认隐藏 ───
         borderView = View(context).apply {
@@ -132,9 +99,6 @@ class LauncherCardView @JvmOverloads constructor(
             true
         }
 
-        // 默认使用竖卡布局
-        setupVerticalLayout()
-
         // ─── 聚焦状态切换：放大动画 + 原生阴影 + 白色边框 ───
         onFocusChangeListener = OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
@@ -165,88 +129,6 @@ class LauncherCardView @JvmOverloads constructor(
         invalidateOutline()
     }
 
-    /**
-     * 手动切换图标与文字的排列方向
-     * @param iconAbove true=图标在上方（竖卡），false=图标在左侧（横卡）
-     */
-    fun setIconLayout(iconAbove: Boolean) {
-        // 解除当前容器绑定
-        (iconView.parent as? android.view.ViewGroup)?.removeView(iconView)
-        (labelView.parent as? android.view.ViewGroup)?.removeView(labelView)
-        contentContainer?.let { removeView(it) }
-        contentContainer = null
-
-        if (iconAbove) {
-            setupVerticalLayout()
-        } else {
-            setupHorizontalLayout()
-        }
-    }
-
-    // ─── 竖卡布局：图标在上（56x56dp），文字在下 ───
-    private fun setupVerticalLayout() {
-        val margin = context.dpToPx(14)
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.TRANSPARENT)
-            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER
-                // 内容四周边距，替代 FrameLayout 的 setPadding
-                leftMargin = margin
-                topMargin = margin
-                rightMargin = margin
-                bottomMargin = margin
-            }
-        }
-        container.addView(
-            iconView,
-            LinearLayout.LayoutParams(context.dpToPx(56), context.dpToPx(56))
-        )
-        container.addView(
-            labelView,
-            LinearLayout.LayoutParams(
-                LayoutParams.WRAP_CONTENT,
-                LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = context.dpToPx(8)
-            })
-        addView(container)
-        contentContainer = container
-    }
-
-    // ─── 横卡布局：图标在左（48x48dp），文字在右 ───
-    private fun setupHorizontalLayout() {
-        val margin = context.dpToPx(14)
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.TRANSPARENT)
-            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER
-                // 内容四周边距，替代 FrameLayout 的 setPadding
-                leftMargin = margin
-                topMargin = margin
-                rightMargin = margin
-                bottomMargin = margin
-            }
-        }
-        container.addView(
-            iconView,
-            LinearLayout.LayoutParams(context.dpToPx(48), context.dpToPx(48))
-        )
-        container.addView(
-            labelView,
-            LinearLayout.LayoutParams(
-                LayoutParams.WRAP_CONTENT,
-                LayoutParams.WRAP_CONTENT
-            ).apply {
-                leftMargin = context.dpToPx(12)
-            })
-        addView(container)
-        contentContainer = container
-    }
-
     // ─── 外部调用的设置方法 ───
 
     /** 设置卡片的背景裁剪图块 */
@@ -255,6 +137,25 @@ class LauncherCardView @JvmOverloads constructor(
             gravity = Gravity.FILL
         }
         background = bgDrawable
+    }
+
+    /** 使用 Glide 加载整卡图片到卡片背景,替代背景图块 */
+    fun setCardImageUrl(url: String) {
+        Glide.with(context)
+            .load(url)
+            .centerCrop()
+            .into(object : com.bumptech.glide.request.target.CustomTarget<android.graphics.drawable.Drawable>() {
+                override fun onResourceReady(
+                    resource: android.graphics.drawable.Drawable,
+                    transition: com.bumptech.glide.request.transition.Transition<in android.graphics.drawable.Drawable>?
+                ) {
+                    background = resource
+                }
+
+                override fun onLoadCleared(placeholder: android.graphics.drawable.Drawable?) {
+                    // 不清空现有背景
+                }
+            })
     }
 
     /** 设置纯色覆盖层 */
@@ -273,33 +174,5 @@ class LauncherCardView @JvmOverloads constructor(
     ) {
         val overlayDrawable = GradientDrawable(orientation, intArrayOf(startColor, endColor))
         overlayLayer.background = overlayDrawable
-    }
-
-    /** 设置应用信息（图标 + 名称），传入null时显示默认占位图标 */
-    fun setAppInfo(info: AppRepository.AppInfo?) {
-        if (info != null) {
-            iconView.setImageDrawable(info.icon)
-            labelView.text = info.label
-        } else {
-            iconView.setImageResource(R.drawable.ic_default_app)
-            labelView.text = context.getString(R.string.no_app)
-        }
-    }
-
-    /** 直接设置文字（用于固定功能卡片） */
-    fun setLabel(text: String) {
-        labelView.text = text
-    }
-
-    /** 直接设置图标资源 */
-    fun setIconResource(resId: Int) {
-        iconView.setImageResource(resId)
-    }
-
-    /** 使用 Glide 加载网络图标 */
-    fun setIconUrl(url: String) {
-        Glide.with(context)
-            .load(url)
-            .into(iconView)
     }
 }
