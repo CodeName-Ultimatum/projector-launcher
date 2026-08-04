@@ -79,18 +79,6 @@ class MainActivity : AppCompatActivity() {
     // ─── 常量 ─────────────────────────────────────────────────────
 
     companion object {
-        /** 下排固定功能卡片的标签资源 ID */
-        val SYSTEM_CARD_LABELS = listOf(
-            R.string.app_list,
-            R.string.settings,
-            R.string.file_manager
-        )
-        /** 下排固定功能卡片的图标资源 ID */
-        val SYSTEM_CARD_ICONS = listOf(
-            R.drawable.ic_app_list,
-            R.drawable.ic_settings,
-            R.drawable.ic_file_manager
-        )
     }
 
     // ─── 生命周期 ───────────────────────────────────────────────
@@ -159,10 +147,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupIviPanel() {
         iviCard = LauncherCardView(this).apply {
             id = View.generateViewId()
-            // 竖卡布局：图标在上，文字在下
-            setIconLayout(iconAbove = true)
-            setAppInfo(null)
-            // 不设置标签：与右侧小卡片一致，清空后显示"暂无"占位
+            // 整图模式：无图标无名称,由 imageUrl 驱动
             // 珊瑚橙渐变覆盖层
             setOverlayGradient(
                 getColor(R.color.ivi_overlay_start),
@@ -223,11 +208,9 @@ class MainActivity : AppCompatActivity() {
                 })
         }
 
-        // 下排：3张系统功能卡片（应用列表/设置/文件管理）
+        // 下排：3张功能卡片（应用列表/设置/文件管理）——整图模式,无图标无名称
         for (i in 0 until 3) {
             val card = createCard(isWide = false)
-            card.setIconResource(SYSTEM_CARD_ICONS[i])
-            card.setLabel(getString(SYSTEM_CARD_LABELS[i]))
             rowBottom.addView(
                 card, LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
@@ -248,9 +231,7 @@ class MainActivity : AppCompatActivity() {
     private fun createCard(isWide: Boolean): LauncherCardView {
         val card = LauncherCardView(this).apply {
             id = View.generateViewId()
-            // 宽卡=图标在左（横卡），窄卡=图标在上（竖卡）
-            setIconLayout(iconAbove = !isWide)
-            setAppInfo(null)
+            // 整图模式:无图标无名称,由 imageUrl 驱动
         }
         cardViews.add(card)
         return card
@@ -346,34 +327,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 将后端配置应用到单张卡片。null 字段跳过，卡片保持占位 */
+    /** 将后端配置应用到单张卡片。null 字段跳过,卡片保持占位 */
     private fun applyCardConfig(config: CardConfig) {
         val card = cardForSlot(config.slotIndex) ?: return
 
-        // 应用包名：查到则设置应用信息，查不到则保持占位
+        // 整卡图片:优先 imageUrl,否则保持背景图块占位
+        config.imageUrl?.let { card.setCardImageUrl(it) }
+
+        // 应用包名:决定点击启动;无包名则点击显示未配置提示
         val pkg = config.packageName
-        if (pkg != null) {
-            val appInfo = appRepo.getAppInfo(pkg)
-            if (appInfo != null) {
-                card.setAppInfo(appInfo)
-                card.onCardClicked = {
-                    val intent = packageManager.getLaunchIntentForPackage(pkg)
-                    if (intent != null) startActivity(intent)
-                }
-                return
+        card.onCardClicked = if (pkg != null) {
+            {
+                val intent = packageManager.getLaunchIntentForPackage(pkg)
+                if (intent != null) startActivity(intent)
+                else showDarkToast("应用无法启动")
             }
+        } else {
+            { showDarkToast(R.string.not_configured) }
         }
-
-        // 未绑定应用时，点击卡片显示未配置提示
-        card.onCardClicked = {
-            showDarkToast(R.string.not_configured)
-        }
-
-        // 配置了自定义名称
-        config.label?.let { card.setLabel(it) }
-
-        // 配置了图标URL
-        config.iconUrl?.let { url -> card.setIconUrl(url) }
 
         // 配置了覆盖层颜色
         if (config.overlayStartColor != null && config.overlayEndColor != null) {
