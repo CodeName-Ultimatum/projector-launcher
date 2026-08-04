@@ -28,15 +28,19 @@
         <item name="android:windowMinWidthMinor">70%</item>
     </style>
 
-    <!-- 自定义应用选择对话框主题：透明窗口背景，无最小宽度，仅显示深色面板 -->
-    <style name="Theme.AppPickerDialog" parent="@android:style/Theme.Material.Dialog.NoActionBar">
+    <!-- 自定义应用选择对话框主题：完全透明窗口背景，无任何默认对话框绘制，仅显示深色面板 -->
+    <style name="Theme.AppPickerDialog" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowFrame">@null</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
         <item name="android:backgroundDimEnabled">true</item>
         <item name="android:backgroundDimAmount">0.4</item>
         <item name="android:windowIsFloating">true</item>
+        <item name="android:windowCloseOnTouchOutside">false</item>
         <item name="android:windowMinWidthMajor">0dp</item>
         <item name="android:windowMinWidthMinor">0dp</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:colorAccent">#FFFFFF</item>
     </style>
 </resources>

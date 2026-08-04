@@ -1,7 +1,9 @@
 package com.example.tvlauncher
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Environment
@@ -161,12 +163,16 @@ class FileManagerActivity : AppCompatActivity() {
 
         // ─── 列表 ───
         recyclerView = RecyclerView(this).apply {
-            layoutManager = LinearLayoutManager(this@FileManagerActivity)
+            layoutManager = SyncScrollLinearLayoutManager(this@FileManagerActivity)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0, 1f
             )
             adapter = FileAdapter()
+            // item 尺寸固定，快速滚动/聚焦时不重测，避免聚焦项移出可视区后跳动
+            setHasFixedSize(true)
+            // 聚焦项移出可视区时自动滚动回，防止快速移动焦点时列表项从屏幕消失
+            isFocusable = true
         }
         root.addView(recyclerView)
 
@@ -190,6 +196,8 @@ class FileManagerActivity : AppCompatActivity() {
             text = "此文件夹为空"
             setTextColor(Color.parseColor("#8A94A6"))
             textSize = 14f
+            // 显式透明背景，避免继承窗口背景的渐变形成色块
+            setBackgroundColor(Color.TRANSPARENT)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -302,24 +310,42 @@ class FileManagerActivity : AppCompatActivity() {
         override fun getItemCount(): Int = files.size
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
+            // 直角矩形背景（默认透明，聚焦时不透明+白描边）——画在内层 item 上，紧贴内容
+            val normalBg = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+            }
+            val focusedBg = GradientDrawable().apply {
+                setColor(Color.parseColor("#1E2530"))
+            }
+            // 外层容器：获得焦点，宽度撑满右侧，左边距让列表不贴左屏
+            // 外层容器：获得焦点，无上下 padding，让内层 item 完全填充，背景占满整列
             val container = LinearLayout(parent.context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dpToPx(16), dpToPx(4), dpToPx(16), dpToPx(4))
-            }
-
-            val item = LinearLayout(parent.context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dpToPx(14), dpToPx(12), dpToPx(14), dpToPx(12))
+                setPadding(0, 0, 0, 0)
                 isFocusable = true
                 isFocusableInTouchMode = true
                 isClickable = true
                 descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                background = GradientDrawable().apply {
-                    cornerRadius = dpToPx(8).toFloat()
-                    setColor(Color.parseColor("#141A21"))
-                    setStroke(dpToPx(2), Color.TRANSPARENT)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    leftMargin = dpToPx(24)
+                    rightMargin = dpToPx(24)
                 }
+            }
+
+            // 内层 item：承载内容，背景画在这里（占满 container 整个区域）
+            val item = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dpToPx(14), dpToPx(12), dpToPx(14), dpToPx(12))
+                descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                background = normalBg
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
             }
 
             val iconView = ImageView(parent.context).apply {
@@ -337,6 +363,8 @@ class FileManagerActivity : AppCompatActivity() {
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 isFocusable = false
+                // 显式透明背景，避免继承窗口背景的渐变形成色块
+                setBackgroundColor(Color.TRANSPARENT)
                 layoutParams = LinearLayout.LayoutParams(
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
                 )
@@ -348,6 +376,8 @@ class FileManagerActivity : AppCompatActivity() {
                 textSize = 12f
                 maxLines = 1
                 isFocusable = false
+                // 显式透明背景，避免继承窗口背景的渐变形成色块
+                setBackgroundColor(Color.TRANSPARENT)
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -355,15 +385,12 @@ class FileManagerActivity : AppCompatActivity() {
             }
             item.addView(detailText)
 
-            item.onFocusChangeListener = View.OnFocusChangeListener { view, hasFocus ->
-                val bg = view.background as GradientDrawable
+            container.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
                 if (hasFocus) {
-                    bg.setColor(Color.parseColor("#1E2530"))
-                    bg.setStroke(dpToPx(2), Color.WHITE)
+                    item.background = focusedBg
                     iconView.setColorFilter(Color.WHITE)
                 } else {
-                    bg.setColor(Color.parseColor("#141A21"))
-                    bg.setStroke(dpToPx(2), Color.TRANSPARENT)
+                    item.background = normalBg
                     iconView.setColorFilter(Color.parseColor("#6E7684"))
                 }
             }
@@ -419,6 +446,45 @@ class FileManagerActivity : AppCompatActivity() {
             name.endsWith(".html") -> "text/html"
             name.endsWith(".apk") -> "application/vnd.android.package-archive"
             else -> "*/*"
+        }
+    }
+
+    /**
+     * 垂直列表 LayoutManager — 焦点移动与屏幕滚动同步。
+     * 聚焦项获得焦点的同一帧，重写 onRequestChildFocus 立即位移滚动，
+     * 目标项越出可视区边界时直接 scrollToPosition，屏幕与焦点同步移动。
+     */
+    inner class SyncScrollLinearLayoutManager(
+        context: Context
+    ) : LinearLayoutManager(context) {
+
+        override fun onRequestChildFocus(
+            parent: RecyclerView,
+            state: RecyclerView.State,
+            child: View,
+            focused: View?
+        ): Boolean {
+            // 聚焦项越过可视区边界时，只滚动刚好让它进入可视区的偏移量，避免跳 2 格
+            val scrollOffset = computeVisibleScrollOffset(parent, child)
+            if (scrollOffset != 0) {
+                parent.scrollBy(0, scrollOffset)
+            }
+            return super.onRequestChildFocus(parent, state, child, focused)
+        }
+
+        /** 计算让 child 完全进入可视区所需的垂直偏移量（正值向下，负值向上） */
+        private fun computeVisibleScrollOffset(parent: RecyclerView, child: View): Int {
+            val childRect = Rect()
+            child.getDrawingRect(childRect)
+            parent.offsetDescendantRectToMyCoords(child, childRect)
+            val parentHeight = parent.height
+            val top = childRect.top
+            val bottom = childRect.bottom
+            return when {
+                top < 0 -> top                        // 越出顶部：向上滚动 top 距离
+                bottom > parentHeight -> bottom - parentHeight  // 越出底部：向下滚动超出距离
+                else -> 0                              // 完全可见：不滚动
+            }
         }
     }
 }

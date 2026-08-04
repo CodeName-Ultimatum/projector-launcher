@@ -9,7 +9,12 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.view.ViewOutlineProvider
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -157,8 +162,7 @@ class MainActivity : AppCompatActivity() {
             // 竖卡布局：图标在上，文字在下
             setIconLayout(iconAbove = true)
             setAppInfo(null)
-            // 默认显示 "IVI" 文字
-            setLabel(getString(R.string.ivi_label))
+            // 不设置标签：与右侧小卡片一致，清空后显示"暂无"占位
             // 珊瑚橙渐变覆盖层
             setOverlayGradient(
                 getColor(R.color.ivi_overlay_start),
@@ -495,12 +499,17 @@ class MainActivity : AppCompatActivity() {
     ) {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            // 面板深色背景作为对话框容器（直角矩形，无圆角，避免四角漏灰）
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#141A21"))
-                cornerRadius = dpToPx(12).toFloat()
-                setStroke(dpToPx(1), Color.parseColor("#2A3442"))
+                setColor(Color.parseColor("#3E4349"))
+                setStroke(dpToPx(1), Color.parseColor("#4E5359"))
             }
             setPadding(dpToPx(24), dpToPx(16), dpToPx(24), dpToPx(16))
+            // 固定面板宽度，行更宽敞便于聚焦
+            layoutParams = ViewGroup.LayoutParams(
+                dpToPx(520),
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         }
 
         // 标题
@@ -508,15 +517,31 @@ class MainActivity : AppCompatActivity() {
             text = title
             setTextColor(Color.WHITE)
             textSize = 18f
+            setBackgroundColor(Color.TRANSPARENT)
             setPadding(0, 0, 0, dpToPx(12))
         })
 
-        // 应用列表行
+        // 应用列表放入可滚动容器，应用多时能滚动选择（限高 400dp，确保在 TV 720p 上不超屏、最后一项完整可见）
+        val scrollView = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isFillViewport = true
+            setBackgroundColor(Color.TRANSPARENT)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(400)
+            )
+        }
+        val listContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        scrollView.addView(listContainer)
+
+        // 应用列表行：左侧应用图标 + 右侧名称，行宽加大便于聚焦
         apps.forEach { app ->
-            val row = TextView(this).apply {
-                text = app.label
-                setTextColor(Color.parseColor("#F2F5F9"))
-                textSize = 15f
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
                 isFocusable = true
                 isFocusableInTouchMode = true
@@ -531,36 +556,74 @@ class MainActivity : AppCompatActivity() {
                     pickerDialog?.dismiss()
                 }
             }
+            // 应用图标 48x48dp
+            row.addView(ImageView(this).apply {
+                setImageDrawable(app.icon)
+                layoutParams = LinearLayout.LayoutParams(dpToPx(48), dpToPx(48))
+                isFocusable = false
+            })
+            // 应用名称
+            row.addView(TextView(this).apply {
+                text = app.label
+                setTextColor(Color.parseColor("#F2F5F9"))
+                textSize = 17f
+                setBackgroundColor(Color.TRANSPARENT)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { leftMargin = dpToPx(14) }
+                isFocusable = false
+            })
             row.onFocusChangeListener = View.OnFocusChangeListener { view, hasFocus ->
                 val bg = view.background as GradientDrawable
+                // 背景始终透明，聚焦时只显示白色描边框
+                bg.setColor(Color.TRANSPARENT)
+                bg.setStroke(dpToPx(2), if (hasFocus) Color.WHITE else Color.TRANSPARENT)
+                // 聚焦时若行超出 ScrollView 可视区，滚动跟随，确保聚焦行完整可见
                 if (hasFocus) {
-                    bg.setColor(Color.parseColor("#1E2530"))
-                    bg.setStroke(dpToPx(2), Color.WHITE)
-                } else {
-                    bg.setColor(Color.TRANSPARENT)
-                    bg.setStroke(dpToPx(2), Color.TRANSPARENT)
+                    scrollView.post {
+                        val rowTop = view.top
+                        val rowBottom = view.bottom
+                        val svScroll = scrollView.scrollY
+                        val svHeight = scrollView.height
+                        val targetScroll = when {
+                            // 行顶部越出可视区顶部：滚到行顶部
+                            rowTop < svScroll -> rowTop
+                            // 行底部越出可视区底部：滚到让行完整可见（留一点底边距）
+                            rowBottom > svScroll + svHeight ->
+                                rowBottom - svHeight + dpToPx(4)
+                            else -> svScroll // 完全可见，不滚动
+                        }
+                        if (targetScroll != svScroll) {
+                            scrollView.smoothScrollTo(0, targetScroll)
+                        }
+                    }
                 }
             }
-            panel.addView(row)
+            listContainer.addView(row)
         }
+        panel.addView(scrollView)
 
-        // 取消按钮
-        panel.addView(TextView(this).apply {
-            text = getString(android.R.string.cancel)
-            setTextColor(Color.parseColor("#8A94A6"))
-            textSize = 15f
-            gravity = Gravity.CENTER
-            setPadding(0, dpToPx(10), 0, 0)
-            setOnClickListener { pickerDialog?.dismiss() }
-        })
-
-        val dlg = android.app.Dialog(this, R.style.Theme_AppPickerDialog)
+        // 不带主题创建 Dialog，窗口包裹内容并居中，用系统 dim 蒙层覆盖窗口外区域（含四角）
+        val dlg = android.app.Dialog(this)
         dlg.setContentView(panel)
-        dlg.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dlg.window?.apply {
+            // DecorView 背景透明，仅显示 panel 深色背景
+            decorView.setBackgroundColor(Color.TRANSPARENT)
+            // 窗口尺寸包裹内容并居中，使四角位于窗口外被系统 dim 蒙灰
+            setLayout(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setGravity(android.view.Gravity.CENTER)
+            // 系统背景变暗（标准 dim 效果）
+            setDimAmount(0.4f)
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
         pickerDialog = dlg
         dlg.show()
-        // 第一个应用行获得焦点
-        (panel.getChildAt(1) as? View)?.requestFocus()
+        // 第一个应用行获得焦点（应用行在 listContainer 里）
+        (listContainer.getChildAt(0) as? View)?.requestFocus()
     }
 
     // ─── Lifecycle ─────────────────────────────────────────────
