@@ -3,19 +3,14 @@ package com.example.tvlauncher
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.provider.Settings
-import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewOutlineProvider
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.tvlauncher.data.AppRepository
@@ -23,6 +18,7 @@ import com.example.tvlauncher.data.CardConfig
 import com.example.tvlauncher.data.CardDataSource
 import com.example.tvlauncher.data.LocalCardDataSource
 import com.example.tvlauncher.data.QuickAppsStore
+import com.example.tvlauncher.ui.AppPanelView
 import com.example.tvlauncher.ui.LauncherCardView
 import com.example.tvlauncher.ui.QuickBarView
 import com.example.tvlauncher.ui.StatusBarView
@@ -44,11 +40,12 @@ import kotlinx.coroutines.withContext
  *     - 所有内部间距统一 8dp
  *   - 底部快捷栏（80dp）：水平可滚动的快捷应用入口
  *   - 容器外侧 36dp 安全边距，防 TV 过扫描裁切
+ *   - 应用面板：平时被卡片区(sheet)覆盖,点击"+"后卡片区上移露出
  *
  * 阴影：Google 原生 elevation + ViewOutlineProvider，spot(40%) + ambient(12%) ≈ 3.3:1
  *
  * 核心流程：
- *   1. setupUI    — 创建状态栏、快捷栏、IVI面板、卡片网格
+ *   1. setupUI    — 创建状态栏、快捷栏、应用面板、IVI面板、卡片网格
  *   2. loadApps   — 异步查询已安装应用，分配到卡片
  *   3. cutBg      — 从全局背景图裁剪9个图块，分别设给9张卡片
  *   4. overlays   — 给每张卡片设置彩色渐变覆盖层
@@ -67,14 +64,29 @@ class MainActivity : AppCompatActivity() {
     /** 卡片配置数据源（后端接入前使用本地空实现） */
     private lateinit var cardDataSource: CardDataSource
 
-    /** 当前弹出的应用选择对话框 */
-    private var pickerDialog: android.app.Dialog? = null
-
     /** 8张右侧卡片（索引：[0-2]上排 [3-4]中排 [5-7]下排） */
     private val cardViews = mutableListOf<LauncherCardView>()
 
     /** IVI面板卡片 */
     private lateinit var iviCard: LauncherCardView
+
+    /** 应用面板（常用应用添加/删除器）,平时被卡片区覆盖 */
+    private lateinit var panelView: AppPanelView
+
+    /** 承载状态栏+卡片区的sheet,点击"+"后上移露出面板 */
+    private lateinit var sheet: View
+
+    /** 面板是否已展开 */
+    private var panelExpanded = false
+
+    /** 面板内按OK变更过常用应用,退出面板后才刷新快捷栏 */
+    private var quickBarDirty = false
+
+    /** 面板展开后需要恢复焦点的卡片（返回时） */
+    private var focusRestoreView: View? = null
+
+    /** 默认文件管理器包名（设备软通文件管理器）,可被后端 CardConfig 覆盖 */
+    private val defaultFileManagerPkg = "com.softwinner.TvdFileManager"
 
     // ─── 常量 ─────────────────────────────────────────────────────
 
@@ -94,11 +106,24 @@ class MainActivity : AppCompatActivity() {
         quickStore = QuickAppsStore(this)
         cardDataSource = LocalCardDataSource()
 
+        sheet = findViewById<View>(R.id.sheet)
         setupStatusBar()
         setupQuickBar()
+        setupPanel()
         setupIviPanel()
         buildCards()
         loadAppsAndBackground()
+
+        // 面板展开时,返回键先收起面板;否则退出启动器
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (panelExpanded) {
+                    collapsePanel()
+                } else {
+                    finish()
+                }
+            }
+        })
     }
 
     // ─── Status Bar ───────────────────────────────────────────────
@@ -134,11 +159,113 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             onAddRequested = {
-                showAddAppDialog()
+                expandPanel()
             }
         }
         val container = findViewById<View>(R.id.quick_bar_container)
         (container as android.widget.FrameLayout).addView(quickBar)
+    }
+
+    // ─── App Panel ───────────────────────────────────────────────
+
+    /** 创建应用面板并绑定数据源（面板平时被卡片区覆盖） */
+    private fun setupPanel() {
+        val panelContainer = findViewById<View>(R.id.panel_container)
+        panelView = AppPanelView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            bind(quickStore)
+            onToggle = { _, _ ->
+                // 面板内不刷快捷栏(避免主线程重建卡顿),退出面板后再刷新
+                quickBarDirty = true
+            }
+        }
+        (panelContainer as android.widget.FrameLayout).addView(panelView)
+
+        // 异步加载应用列表
+        lifecycleScope.launch {
+            val apps = withContext(Dispatchers.IO) {
+                appRepo.getInstalledLaunchableApps()
+            }
+            panelView.setApps(apps)
+        }
+    }
+
+    /** 点击"+"后:卡片区和状态栏上移露出应用面板 */
+    private fun expandPanel() {
+        if (panelExpanded) return
+        panelExpanded = true
+        panelView.setExpanded(true)
+        // 屏蔽卡片区/状态栏/快捷栏的焦点,焦点只能停留在面板内,仅返回键能跳出
+        setSheetFocusable(false)
+        setQuickBarFocusable(false)
+
+        // 记录当前焦点,返回时恢复
+        focusRestoreView = currentFocus
+        // 上移 sheet(状态栏+卡片区) 216dp = 面板高度,露出底部面板;快捷栏不动
+        val shift = dpToPx(216)
+        sheet.animate().translationY(-shift.toFloat())
+            .setDuration(220)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                // 动画被中断(快速连按返回)时跳过:不把焦点硬塞给已被禁用的面板
+                if (!panelExpanded) return@withEndAction
+                panelView.post { panelView.requestFocusOnFirst() }
+            }
+            .start()
+    }
+
+    /** 按返回键:卡片区和状态栏下移复位,盖回面板 */
+    private fun collapsePanel() {
+        if (!panelExpanded) return
+        panelExpanded = false
+        panelView.setExpanded(false)
+        sheet.animate().translationY(0f)
+            .setDuration(220)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                // 动画被中断(快速连按展开)时跳过:面板可能已被再次展开
+                if (panelExpanded) return@withEndAction
+                // 恢复卡片区/状态栏/快捷栏焦点能力
+                setSheetFocusable(true)
+                setQuickBarFocusable(true)
+                // 动画结束后才刷新快捷栏,反映面板内的添加/取消变更
+                val quickBarRebuilt = if (quickBarDirty) {
+                    quickBarDirty = false
+                    quickBar.refresh()
+                    true
+                } else {
+                    false
+                }
+                // 恢复之前的焦点:快捷栏重建过则聚焦 + 按钮,否则恢复原焦点视图
+                if (quickBarRebuilt) {
+                    quickBar.requestFocusOnAddButton()
+                } else {
+                    focusRestoreView?.requestFocus()
+                }
+            }
+            .start()
+    }
+
+    /** 切换 sheet(状态栏+卡片区)是否可聚焦 */
+    private fun setSheetFocusable(focusable: Boolean) {
+        (sheet as? ViewGroup)?.setDescendantFocusability(
+            if (focusable) ViewGroup.FOCUS_AFTER_DESCENDANTS
+            else ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        )
+    }
+
+    /** 切换快捷栏是否可聚焦 */
+    private fun setQuickBarFocusable(focusable: Boolean) {
+        quickBar.setDescendantFocusability(
+            if (focusable) ViewGroup.FOCUS_AFTER_DESCENDANTS
+            else ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        )
+        if (focusable) {
+            quickBar.isFocusable = false
+        }
     }
 
     // ─── IVI Panel ─────────────────────────────────────────────
@@ -223,8 +350,7 @@ class MainActivity : AppCompatActivity() {
                 0 -> card.onCardClicked = { openAppList() }
                 1 -> card.onCardClicked = { openSettings() }
                 2 -> card.onCardClicked = { openFileManager() }
-            }
-        }
+            }        }
     }
 
     /** 创建一张卡片并加入 cardViews 列表 */
@@ -402,7 +528,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 设置 D-pad 焦点导航的关系链 */
     private fun setupFocusNavigation() {
-        // 向右循环链路：ivi -> Lazy -> YouTube -> Netflix -> Google -> Chrome -> 应用列表 -> 设置 -> 文件管理 -> ivi
+        // 向右循环链路：ivi -> 9张卡 -> ivi
         val chain = listOf(
             iviCard,
             cardViews[0], cardViews[1], cardViews[2],
@@ -410,9 +536,15 @@ class MainActivity : AppCompatActivity() {
             cardViews[5], cardViews[6], cardViews[7]
         )
         for (i in chain.indices) {
-            // 仅向右：当前 -> 下一个（循环），向左由系统默认布局导航处理
+            // 仅向右：当前 -> 下一个（循环）
             chain[i].nextFocusRightId = chain[(i + 1) % chain.size].id
         }
+        // 左边界：IVI 是卡片区最左,LEFT 停在原地（防止系统几何导航捡到意外的下方目标）
+        iviCard.nextFocusLeftId = iviCard.id
+        // 右侧网格每行最左卡片,LEFT 确定性指向 IVI
+        cardViews[0].nextFocusLeftId = iviCard.id  // 上排最左
+        cardViews[3].nextFocusLeftId = iviCard.id  // 中排最左
+        cardViews[5].nextFocusLeftId = iviCard.id  // 下排最左
     }
 
     // ─── System Functions ─────────────────────────────────────────
@@ -427,174 +559,14 @@ class MainActivity : AppCompatActivity() {
         startActivity(Intent(Settings.ACTION_SETTINGS))
     }
 
-    /** 打开文件管理器 */
+    /** 打开系统文件管理器应用（默认软通文件管理器,后端可通过 CardConfig.packageName 覆盖） */
     private fun openFileManager() {
-        startActivity(Intent(this, FileManagerActivity::class.java))
-    }
-
-    /** 弹出应用选择对话框，将选中的应用添加到快捷栏 */
-    private fun showAddAppDialog() {
-        lifecycleScope.launch {
-            val apps = withContext(Dispatchers.IO) {
-                appRepo.getInstalledLaunchableApps()
-            }
-
-            if (apps.isEmpty()) {
-                showDarkToast("没有找到可用的应用")
-                return@launch
-            }
-
-            showAppPickerDialog(
-                title = getString(R.string.add_app),
-                apps = apps
-            ) { selected ->
-                if (quickStore.addQuickApp(selected.packageName)) {
-                    quickBar.refresh()
-                } else {
-                    showDarkToast("应用已存在或无法添加")
-                }
-            }
+        val intent = packageManager.getLaunchIntentForPackage(defaultFileManagerPkg)
+        if (intent != null) {
+            startActivity(intent)
+        } else {
+            showDarkToast("未找到文件管理器应用")
         }
-    }
-
-    /**
-     * 自定义应用选择对话框 — 深色圆角面板 + 自绘列表行
-     *
-     * 不用系统 setItems()，因为 AOSP TV 上系统列表项会渲染成深蓝底+白边。
-     * 这里完全自绘，与深色主题统一。
-     */
-    private fun showAppPickerDialog(
-        title: String,
-        apps: List<AppRepository.AppInfo>,
-        onSelect: (AppRepository.AppInfo) -> Unit
-    ) {
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            // 面板深色背景作为对话框容器（直角矩形，无圆角，避免四角漏灰）
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#3E4349"))
-                setStroke(dpToPx(1), Color.parseColor("#4E5359"))
-            }
-            setPadding(dpToPx(24), dpToPx(16), dpToPx(24), dpToPx(16))
-            // 固定面板宽度，行更宽敞便于聚焦
-            layoutParams = ViewGroup.LayoutParams(
-                dpToPx(520),
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        // 标题
-        panel.addView(TextView(this).apply {
-            text = title
-            setTextColor(Color.WHITE)
-            textSize = 18f
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(0, 0, 0, dpToPx(12))
-        })
-
-        // 应用列表放入可滚动容器，应用多时能滚动选择（限高 400dp，确保在 TV 720p 上不超屏、最后一项完整可见）
-        val scrollView = ScrollView(this).apply {
-            isVerticalScrollBarEnabled = false
-            isFillViewport = true
-            setBackgroundColor(Color.TRANSPARENT)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(400)
-            )
-        }
-        val listContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.TRANSPARENT)
-        }
-        scrollView.addView(listContainer)
-
-        // 应用列表行：左侧应用图标 + 右侧名称，行宽加大便于聚焦
-        apps.forEach { app ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
-                isFocusable = true
-                isFocusableInTouchMode = true
-                isClickable = true
-                background = GradientDrawable().apply {
-                    cornerRadius = dpToPx(8).toFloat()
-                    setColor(Color.TRANSPARENT)
-                    setStroke(dpToPx(2), Color.TRANSPARENT)
-                }
-                setOnClickListener {
-                    onSelect(app)
-                    pickerDialog?.dismiss()
-                }
-            }
-            // 应用图标 48x48dp
-            row.addView(ImageView(this).apply {
-                setImageDrawable(app.icon)
-                layoutParams = LinearLayout.LayoutParams(dpToPx(48), dpToPx(48))
-                isFocusable = false
-            })
-            // 应用名称
-            row.addView(TextView(this).apply {
-                text = app.label
-                setTextColor(Color.parseColor("#F2F5F9"))
-                textSize = 17f
-                setBackgroundColor(Color.TRANSPARENT)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { leftMargin = dpToPx(14) }
-                isFocusable = false
-            })
-            row.onFocusChangeListener = View.OnFocusChangeListener { view, hasFocus ->
-                val bg = view.background as GradientDrawable
-                // 背景始终透明，聚焦时只显示白色描边框
-                bg.setColor(Color.TRANSPARENT)
-                bg.setStroke(dpToPx(2), if (hasFocus) Color.WHITE else Color.TRANSPARENT)
-                // 聚焦时若行超出 ScrollView 可视区，滚动跟随，确保聚焦行完整可见
-                if (hasFocus) {
-                    scrollView.post {
-                        val rowTop = view.top
-                        val rowBottom = view.bottom
-                        val svScroll = scrollView.scrollY
-                        val svHeight = scrollView.height
-                        val targetScroll = when {
-                            // 行顶部越出可视区顶部：滚到行顶部
-                            rowTop < svScroll -> rowTop
-                            // 行底部越出可视区底部：滚到让行完整可见（留一点底边距）
-                            rowBottom > svScroll + svHeight ->
-                                rowBottom - svHeight + dpToPx(4)
-                            else -> svScroll // 完全可见，不滚动
-                        }
-                        if (targetScroll != svScroll) {
-                            scrollView.smoothScrollTo(0, targetScroll)
-                        }
-                    }
-                }
-            }
-            listContainer.addView(row)
-        }
-        panel.addView(scrollView)
-
-        // 不带主题创建 Dialog，窗口包裹内容并居中，用系统 dim 蒙层覆盖窗口外区域（含四角）
-        val dlg = android.app.Dialog(this)
-        dlg.setContentView(panel)
-        dlg.window?.apply {
-            // DecorView 背景透明，仅显示 panel 深色背景
-            decorView.setBackgroundColor(Color.TRANSPARENT)
-            // 窗口尺寸包裹内容并居中，使四角位于窗口外被系统 dim 蒙灰
-            setLayout(
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setGravity(android.view.Gravity.CENTER)
-            // 系统背景变暗（标准 dim 效果）
-            setDimAmount(0.4f)
-            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        }
-        pickerDialog = dlg
-        dlg.show()
-        // 第一个应用行获得焦点（应用行在 listContainer 里）
-        (listContainer.getChildAt(0) as? View)?.requestFocus()
     }
 
     // ─── Lifecycle ─────────────────────────────────────────────

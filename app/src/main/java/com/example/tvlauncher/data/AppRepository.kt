@@ -13,6 +13,12 @@ class AppRepository(private val context: Context) {
         val icon: Drawable
     )
 
+    /**
+     * 已加载应用信息缓存(包名 → AppInfo)
+     * 图标 Drawable 一旦从 PackageManager 取出就常驻内存,避免在主线程重复查询
+     */
+    private val appCache = mutableMapOf<String, AppInfo>()
+
     fun getInstalledLaunchableApps(): List<AppInfo> {
         val pm = context.packageManager
         val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
@@ -26,40 +32,34 @@ class AppRepository(private val context: Context) {
                 val pkg = ri.activityInfo.packageName
                 if (pkg == selfPackage) return@mapNotNull null
                 try {
-                    val appInfo = pm.getApplicationInfo(pkg, 0)
-                    val isSystem =
-                        (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-                    if (isSystem &&
-                        (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
-                    ) {
-                        val label = pm.getApplicationLabel(appInfo).toString()
-                        val isMediaApp = label.isNotEmpty() &&
-                            (pkg.contains("media") || pkg.contains("player") ||
-                                pkg.contains("video") || pkg.contains("music") ||
-                                pkg.contains("gallery") || pkg.contains("camera"))
-                        if (!isMediaApp) return@mapNotNull null
-                    }
                     AppInfo(
                         packageName = pkg,
-                        label = pm.getApplicationLabel(appInfo).toString(),
-                        icon = pm.getApplicationIcon(appInfo)
+                        label = pm.getApplicationLabel(
+                            pm.getApplicationInfo(pkg, 0)
+                        ).toString(),
+                        icon = pm.getApplicationIcon(pkg)
                     )
                 } catch (e: Exception) {
                     null
                 }
             }
+            .onEach { appCache[it.packageName] = it }
             .sortedBy { it.label.lowercase() }
     }
 
     fun getAppInfo(packageName: String): AppInfo? {
+        // 命中缓存直接返回,避免主线程同步查 PackageManager
+        appCache[packageName]?.let { return it }
         return try {
             val pm = context.packageManager
             val ai = pm.getApplicationInfo(packageName, 0)
-            AppInfo(
+            val info = AppInfo(
                 packageName = packageName,
                 label = pm.getApplicationLabel(ai).toString(),
                 icon = pm.getApplicationIcon(ai)
             )
+            appCache[packageName] = info
+            info
         } catch (e: Exception) {
             null
         }

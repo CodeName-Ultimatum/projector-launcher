@@ -2,20 +2,17 @@
 <!--
     主布局文件 — TV Launcher 首页
     结构：FrameLayout（根）
-        ├── LinearLayout（垂直，撑满全屏）
-        │   ├── FrameLayout（状态栏容器，60dp，左右 36dp 安全边距）
-        │   ├── LinearLayout（主内容区，weight=1，左右 36dp 安全边距）
-        │   │   ├── LauncherCardView（IVI卡片，代码动态添加，左 32dp、右 8dp 内部间距）
-        │   │   └── LinearLayout（右侧卡片网格，3/4宽）
-        │   │       ├── row_top（上排3张竖卡，等权重，间距 8dp）
-        │   │       ├── row_middle（中排2张横卡，上下 8dp 间隙）
-        │   │       └── row_bottom（下排3张固定功能卡片，间距 8dp）
-        │   └── FrameLayout（快捷栏容器，80dp，左右 36dp 安全边距）
+        ├── main_container（竖排，撑满全屏）：卡片区 + 快捷栏在同一容器,共用绘制空间
+        │   ├── 状态栏（60dp）
+        │   ├── 卡片区（weight=1，含 IVI + 右侧网格）
+        │   ├── 12dp 间距
+        │   └── 快捷栏（86dp）
+        └── panel_container（应用面板，216dp，点"+"后卡片区+状态栏上移露出）
 
-    间距设计：
-    - 36dp：容器外侧安全边距（防 TV 过扫描裁切）
-    - 32dp：IVI 左侧整体缩进（含边距补偿）
-    - 8dp： 所有内部间距（IVI右边距、右侧卡片水平间隙、行列垂直间隙）统一
+    面板交互：
+    - 点"+" → 卡片区+状态栏上移 216dp，快捷栏不动，面板从卡片区和快捷栏之间露出
+    - 按返回 → 复位
+    - 卡片放大 elevation 提升，与快捷栏同容器,可盖到快捷栏区域
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -24,108 +21,147 @@
     android:clipChildren="false"
     android:clipToPadding="false">
 
-    <!--外层垂直布局，将屏幕分为 状态栏 / 内容区 / 快捷栏 三段-->
+    <!--
+        应用面板容器 — 底层，216dp 两排应用
+        点"+"后卡片区上移 216dp 露出；面板底对齐快捷栏顶
+    -->
+    <FrameLayout
+        android:id="@+id/panel_container"
+        android:layout_width="match_parent"
+        android:layout_height="216dp"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="86dp"
+        android:background="@color/panel_bg"
+        android:clipChildren="false"
+        android:clipToPadding="false" />
+
+    <!--
+        main_container — 卡片区 + 快捷栏同一容器
+        必须显式透明背景:主题 background=main_bg 会默认继承,不透明盖住底层面板
+        展开时 sheet 上移可露出下层 panel_container
+    -->
     <LinearLayout
-        android:id="@+id/root_layout"
+        android:id="@+id/main_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="@android:color/transparent"
         android:clipChildren="false"
         android:clipToPadding="false"
         android:orientation="vertical">
 
         <!--
-            状态栏容器
-            实际内容由 StatusBarView 代码动态添加
-            高度固定120dp，无背景颜色，左右 36dp 安全边距防过扫描裁切
-        -->
-        <FrameLayout
-            android:id="@+id/status_bar_container"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:layout_marginLeft="36dp"
-            android:layout_marginRight="36dp" />
-<!--（状态栏高度 48dp→60dp，从内容区上边距移12dp过来）-->
-
-        <!--
-            主内容区 — IVI面板 + 卡片网格
-            IVI 卡片（左1/4）由代码动态添加到 index=0
-            右侧卡片网格（右3/4）跟随其后
+            sheet — 状态栏 + 卡片区
+            点"+"后整体上移 216dp 露出面板,快捷栏不动
         -->
         <LinearLayout
-            android:id="@+id/main_content"
+            android:id="@+id/sheet"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginLeft="36dp"
-            android:layout_marginRight="36dp"
-            android:layout_marginTop="12dp"
-            android:layout_marginBottom="24dp"
             android:clipChildren="false"
             android:clipToPadding="false"
-            android:orientation="horizontal">
+            android:paddingBottom="16dp"
+            android:orientation="vertical">
 
             <!--
-                右侧卡片网格（3/4）
-                三行布局：上排3卡 / 中排2卡 / 下排3卡
-                每行 height=0dp + weight=1 均分高度
+                状态栏容器
+                实际内容由 StatusBarView 代码动态添加
+                高度固定60dp，左右 36dp 安全边距
+            -->
+            <FrameLayout
+                android:id="@+id/status_bar_container"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginLeft="36dp"
+                android:layout_marginRight="36dp" />
+
+            <!--
+                主内容区 — IVI面板 + 卡片网格
+                IVI 卡片（左1/4）由代码动态添加到 index=0
+                右侧卡片网格（右3/4）跟随其后
             -->
             <LinearLayout
-                android:id="@+id/right_panel"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="3"
+                android:id="@+id/main_content"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginLeft="36dp"
+                android:layout_marginRight="36dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="0dp"
                 android:clipChildren="false"
                 android:clipToPadding="false"
-                android:orientation="vertical"
-                android:padding="0dp">
+                android:orientation="horizontal">
 
-                <!--上排：3张竖卡（iconAbove模式下显示）-->
+                <!--
+                    右侧卡片网格（3/4）
+                    三行布局：上排3卡 / 中排2卡 / 下排3卡
+                    每行 height=0dp + weight=1 均分高度
+                -->
                 <LinearLayout
-                    android:id="@+id/row_top"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:layout_marginBottom="4dp"
-                    android:orientation="horizontal"
+                    android:id="@+id/right_panel"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="3"
                     android:clipChildren="false"
-                    android:clipToPadding="false" />
+                    android:clipToPadding="false"
+                    android:orientation="vertical"
+                    android:padding="0dp">
 
-                <!--中排：2张横卡（iconAbove=false），上下有8dp间隙-->
-                <LinearLayout
-                    android:id="@+id/row_middle"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="4dp"
-                    android:orientation="horizontal"
-                    android:clipChildren="false"
-                    android:clipToPadding="false" />
+                    <!--上排：3张竖卡（iconAbove模式下显示）-->
+                    <LinearLayout
+                        android:id="@+id/row_top"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:layout_marginBottom="4dp"
+                        android:orientation="horizontal"
+                        android:clipChildren="false"
+                        android:clipToPadding="false" />
 
-                <!--下排：3张系统功能卡（应用列表/设置/文件管理）-->
-                <LinearLayout
-                    android:id="@+id/row_bottom"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:layout_marginTop="4dp"
-                    android:orientation="horizontal"
-                    android:clipChildren="false"
-                    android:clipToPadding="false" />
+                    <!--中排：2张横卡（iconAbove=false），上下有8dp间隙-->
+                    <LinearLayout
+                        android:id="@+id/row_middle"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:layout_marginTop="4dp"
+                        android:layout_marginBottom="4dp"
+                        android:orientation="horizontal"
+                        android:clipChildren="false"
+                        android:clipToPadding="false" />
+
+                    <!--下排：3张系统功能卡（应用列表/设置/文件管理）-->
+                    <LinearLayout
+                        android:id="@+id/row_bottom"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:layout_marginTop="4dp"
+                        android:orientation="horizontal"
+                        android:clipChildren="false"
+                        android:clipToPadding="false" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 
+        <!-- 卡片区与快捷栏之间的 12dp 间距 -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="12dp" />
+
         <!--
-            快捷栏容器
+            快捷栏容器 — 固定在 main_container 底部
             实际内容由 QuickBarView 代码动态添加
-            高度固定140dp，水平滚动，无背景颜色，左右 36dp 安全边距
+            高度固定86dp，水平滚动，左右 36dp 安全边距
         -->
         <FrameLayout
             android:id="@+id/quick_bar_container"
             android:layout_width="match_parent"
-            android:layout_height="80dp"
+            android:layout_height="86dp"
             android:layout_marginLeft="36dp"
             android:layout_marginRight="36dp" />
 
     </LinearLayout>
+
 </FrameLayout>

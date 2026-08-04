@@ -16,18 +16,16 @@ import com.example.tvlauncher.data.AppRepository
 import com.example.tvlauncher.data.QuickAppsStore
 import com.example.tvlauncher.util.dpToPx
 import com.example.tvlauncher.util.setSafeOnClickListener
-import com.example.tvlauncher.util.setSafeOnLongClickListener
 
 /**
  * 底部快捷栏 — 水平可滚动的应用快捷入口列表
  *
  * 结构：HorizontalScrollView > LinearLayout（浅蓝背景框 WRAP_CONTENT）
- *   - 每个快捷应用项：[应用图标 48x48dp]
- *   - 末尾：+ 按钮
+ *   - 每个快捷应用项：[应用图标 48x48dp]，蓝色底块，项间 6dp 间隙露出主界面背景
+ *   - 末尾：+ 按钮（点击展开应用面板,由 MainActivity 处理）
  *   - 聚焦时显示白色描边
- *   - 长按弹出删除确认对话框
  *   - 数据通过 QuickAppsStore 持久化到 SharedPreferences
- *   - 背景框随添加应用数量自动变长
+ *   - 删除快捷应用统一在应用面板内按 OK 切换
  */
 class QuickBarView @JvmOverloads constructor(
     context: Context,
@@ -60,7 +58,7 @@ class QuickBarView @JvmOverloads constructor(
             container,
             LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                context.dpToPx(68)
+                context.dpToPx(74)
             ).apply {
                 // 18 + 每项 6dp 左边距 = 首项距屏左 24dp
                 leftMargin = context.dpToPx(18)
@@ -154,13 +152,13 @@ class QuickBarView @JvmOverloads constructor(
             onAppSelected?.invoke(info.packageName)
         }
 
-        // 长按弹出删除确认
-        item.setSafeOnLongClickListener {
-            showRemoveDialog(info)
-            true
-        }
-
         return item
+    }
+
+    /** 将焦点落到末尾的 + 添加按钮（收起面板刷新后调用,替代失效的旧视图引用） */
+    fun requestFocusOnAddButton() {
+        val addBtn = container.getChildAt(container.childCount - 1) ?: return
+        addBtn.requestFocus()
     }
 
     /**
@@ -214,106 +212,5 @@ class QuickBarView @JvmOverloads constructor(
         }
 
         return addBtn
-    }
-
-    /** 弹出对话框确认删除快捷应用 */
-    private fun showRemoveDialog(info: AppRepository.AppInfo) {
-        // 不带主题创建 Dialog,窗口包裹内容并居中,用系统 dim 蒙层覆盖窗口外区域(含四角)
-        val dlg = android.app.Dialog(context)
-
-        // 深色面板(与主界面应用选择弹窗一致):深灰底 + 细描边,四角用系统 dim 蒙层压灰
-        val panel = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#3E4349"))
-                setStroke(context.dpToPx(1), Color.parseColor("#4E5359"))
-            }
-            setPadding(context.dpToPx(28), context.dpToPx(20), context.dpToPx(28), context.dpToPx(20))
-            layoutParams = ViewGroup.LayoutParams(
-                context.dpToPx(620),
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        // 标题:应用名
-        panel.addView(TextView(context).apply {
-            text = info.label
-            setTextColor(Color.WHITE)
-            textSize = 20f
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(0, 0, 0, context.dpToPx(14))
-        })
-
-        // 消息
-        panel.addView(TextView(context).apply {
-            text = context.getString(R.string.confirm_remove)
-            setTextColor(Color.parseColor("#F2F5F9"))
-            textSize = 17f
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(0, 0, 0, context.dpToPx(20))
-        })
-
-        // 底部按钮行:确定 | 取消
-        val buttonRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-            setBackgroundColor(Color.TRANSPARENT)
-        }
-        val okBtn = createDialogButton(context.getString(android.R.string.ok)) {
-            store?.removeQuickApp(info.packageName)
-            refresh()
-            dlg.dismiss()
-        }
-        buttonRow.addView(okBtn)
-        buttonRow.addView(
-            createDialogButton(context.getString(android.R.string.cancel)) {
-                dlg.dismiss()
-            },
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { leftMargin = context.dpToPx(12) }
-        )
-        panel.addView(buttonRow)
-
-        dlg.setContentView(panel)
-        dlg.window?.apply {
-            decorView.setBackgroundColor(Color.TRANSPARENT)
-            setLayout(
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setGravity(android.view.Gravity.CENTER)
-            setDimAmount(0.4f)
-            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        }
-        dlg.show()
-        // 默认焦点落在"确定",白色描边提示用户按 OK 即可确认
-        okBtn.requestFocus()
-    }
-
-    /** 深色底块按钮:聚焦时白描边 + 白字,失焦时灰字 */
-    private fun createDialogButton(text: String, onClick: () -> Unit): TextView {
-        val normalBg = GradientDrawable().apply {
-            setColor(Color.parseColor("#2A3442"))
-            setStroke(context.dpToPx(2), Color.TRANSPARENT)
-        }
-        return TextView(context).apply {
-            this.text = text
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setPadding(context.dpToPx(28), context.dpToPx(12), context.dpToPx(28), context.dpToPx(12))
-            isFocusable = true
-            isFocusableInTouchMode = true
-            isClickable = true
-            background = normalBg
-            setTextColor(Color.parseColor("#8A94A6"))
-            setSafeOnClickListener { onClick() }
-            onFocusChangeListener = OnFocusChangeListener { view, hasFocus ->
-                val bg = view.background as GradientDrawable
-                bg.setStroke(context.dpToPx(2), if (hasFocus) Color.WHITE else Color.TRANSPARENT)
-                setTextColor(if (hasFocus) Color.WHITE else Color.parseColor("#8A94A6"))
-            }
-        }
     }
 }
