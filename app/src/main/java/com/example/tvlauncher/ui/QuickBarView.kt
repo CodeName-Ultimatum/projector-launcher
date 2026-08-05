@@ -2,11 +2,13 @@ package com.example.tvlauncher.ui
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -44,6 +46,9 @@ class QuickBarView @JvmOverloads constructor(
         // 隐藏滚动条，禁用过度滚动效果
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
+        // 不裁切子视图,让聚焦放大的应用项/阴影能越界显示
+        clipChildren = false
+        clipToPadding = false
         // QuickBar 自身不获焦，焦点给子项
         isFocusable = false
         descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
@@ -53,6 +58,9 @@ class QuickBarView @JvmOverloads constructor(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Color.TRANSPARENT)
+            // 不裁切子视图,让聚焦放大的应用项/阴影能越界显示
+            clipChildren = false
+            clipToPadding = false
         }
         addView(
             container,
@@ -135,9 +143,21 @@ class QuickBarView @JvmOverloads constructor(
         }
         item.background = normalBg
 
+        // 聚焦阴影:圆角 outline + elevation,与卡片阴影观感一致
+        item.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, context.dpToPx(8).toFloat())
+            }
+        }
+        item.outlineSpotShadowColor = Color.argb(0xFF, 0, 0, 0)   // 纯黑
+        item.outlineAmbientShadowColor = Color.argb(0xE6, 0, 0, 0) // 0.9
+        item.clipToOutline = false
+
         // 应用图标 48x48dp，无文字标签
+        // 复制 Drawable:图标实例可能被面板格子/应用列表共享,AdaptiveIconDrawable 有可变状态,
+        // 多个 ImageView 复用同一实例会因 setBounds 竞争导致图案闪烁/消失
         val icon = ImageView(context).apply {
-            setImageDrawable(info.icon)
+            setImageDrawable(info.icon.constantState?.newDrawable() ?: info.icon)
             layoutParams = LinearLayout.LayoutParams(context.dpToPx(48), context.dpToPx(48))
             isFocusable = false
         }
@@ -145,6 +165,15 @@ class QuickBarView @JvmOverloads constructor(
 
         item.onFocusChangeListener = OnFocusChangeListener { _, hasFocus ->
             item.background = if (hasFocus) focusedBg else normalBg
+            if (hasFocus) {
+                item.elevation = context.dpToPx(12).toFloat()
+                item.animate().scaleX(1.10f).scaleY(1.10f).setDuration(150)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            } else {
+                item.elevation = 0f
+                item.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            }
         }
 
         // 点击启动应用
@@ -195,6 +224,16 @@ class QuickBarView @JvmOverloads constructor(
         }
         addBtn.background = normalBg
 
+        // 聚焦阴影:圆角 outline + elevation,与应用项一致
+        addBtn.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, context.dpToPx(8).toFloat())
+            }
+        }
+        addBtn.outlineSpotShadowColor = Color.argb(0xFF, 0, 0, 0)   // 纯黑
+        addBtn.outlineAmbientShadowColor = Color.argb(0xE6, 0, 0, 0) // 0.9
+        addBtn.clipToOutline = false
+
         // + 图标 48x48dp
         val icon = ImageView(context).apply {
             setImageResource(R.drawable.ic_add)
@@ -205,6 +244,15 @@ class QuickBarView @JvmOverloads constructor(
 
         addBtn.onFocusChangeListener = OnFocusChangeListener { _, hasFocus ->
             addBtn.background = if (hasFocus) focusedBg else normalBg
+            if (hasFocus) {
+                addBtn.elevation = context.dpToPx(12).toFloat()
+                addBtn.animate().scaleX(1.10f).scaleY(1.10f).setDuration(150)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            } else {
+                addBtn.elevation = 0f
+                addBtn.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            }
         }
 
         addBtn.setSafeOnClickListener {

@@ -150,7 +150,8 @@ class AppPanelView @JvmOverloads constructor(
             recyclerView.isFocusable = true
             recyclerView.isEnabled = true
             shadowTop?.visibility = View.VISIBLE
-            shadowBottom?.visibility = View.VISIBLE
+            // 底部阴影带由 MainActivity 在展开动画结束后单独显示,避免被快捷栏裁剪
+            shadowBottom?.visibility = View.INVISIBLE
         } else {
             descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             // 禁用 RecyclerView 使收起态格子不可聚焦,不拦截卡片区/快捷栏的 D-pad 导航
@@ -160,6 +161,11 @@ class AppPanelView @JvmOverloads constructor(
             shadowTop?.visibility = View.INVISIBLE
             shadowBottom?.visibility = View.INVISIBLE
         }
+    }
+
+    /** 单独控制底部阴影带显示(展开动画结束后调用,防止动画期间被快捷栏裁剪) */
+    fun setBottomShadowVisible(visible: Boolean) {
+        shadowBottom?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
     }
 
     /** 将焦点落到第一个应用格子上 */
@@ -286,7 +292,8 @@ class AppPanelView @JvmOverloads constructor(
 
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val app = apps[position]
-            holder.iconView.setImageDrawable(app.icon)
+            // 复制 Drawable:图标实例与快捷栏/应用列表共享,AdaptiveIconDrawable 可变状态竞争会致图标闪烁
+            holder.iconView.setImageDrawable(app.icon.constantState?.newDrawable() ?: app.icon)
             holder.nameText.text = app.label
             holder.checkView.visibility =
                 if (addedPackages.contains(app.packageName)) View.VISIBLE else View.GONE

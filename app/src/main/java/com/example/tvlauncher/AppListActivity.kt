@@ -2,11 +2,13 @@ package com.example.tvlauncher
 
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -193,7 +195,8 @@ class AppListActivity : AppCompatActivity() {
         }
 
         val icon = ImageView(this).apply {
-            setImageDrawable(app.icon)
+            // 复制 Drawable:图标实例与主界面共享,AdaptiveIconDrawable 可变状态竞争会致图标闪烁
+            setImageDrawable(app.icon.constantState?.newDrawable() ?: app.icon)
             layoutParams = LinearLayout.LayoutParams(dpToPx(58), dpToPx(58))
             scaleType = ImageView.ScaleType.FIT_CENTER
             isFocusable = false
@@ -229,13 +232,25 @@ class AppListActivity : AppCompatActivity() {
         }
         item.background = normalBg
 
+        // 聚焦阴影:圆角 outline + elevation,与主界面卡片阴影观感一致
+        item.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, dpToPx(8).toFloat())
+            }
+        }
+        item.outlineSpotShadowColor = 0xFF000000.toInt()   // 纯黑
+        item.outlineAmbientShadowColor = 0xE6000000.toInt() // 0.9
+        item.clipToOutline = false
+
         item.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
                 item.animate().scaleX(1.1f).scaleY(1.1f).setDuration(150).start()
                 item.background = focusedBg
+                item.elevation = dpToPx(12).toFloat()
             } else {
                 item.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
                 item.background = normalBg
+                item.elevation = 0f
             }
         }
 
