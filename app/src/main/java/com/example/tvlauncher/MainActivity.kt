@@ -3,10 +3,12 @@ package com.example.tvlauncher
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Outline
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -42,9 +44,8 @@ import kotlinx.coroutines.withContext
  *   - 容器外侧 36dp 安全边距，防 TV 过扫描裁切
  *   - 应用面板：平时被卡片区(sheet)覆盖,点击"+"后卡片区上移露出
  *
- * 阴影：Google 原生 elevation + ViewOutlineProvider，spot(40%) + ambient(12%) ≈ 3.3:1
- *
- * 核心流程：
+ * 阴影：CardView 原生阴影，聚焦时 elevation 8dp，失焦无阴影
+ * * 核心流程：
  *   1. setupUI    — 创建状态栏、快捷栏、应用面板、IVI面板、卡片网格
  *   2. loadApps   — 异步查询已安装应用，分配到卡片
  *   3. cutBg      — 从全局背景图裁剪9个图块，分别设给9张卡片
@@ -73,8 +74,19 @@ class MainActivity : AppCompatActivity() {
     /** 应用面板（常用应用添加/删除器）,平时被卡片区覆盖 */
     private lateinit var panelView: AppPanelView
 
+    /** 应用面板容器(展开时抬升 elevation 盖过快捷栏,使面板底部阴影不被盖住) */
+    private lateinit var panelContainer: View
+
+    /** 面板展开时覆盖卡片区的天蓝亮蒙版(营造面板凸起的光感) */
+    private var panelGlow: View? = null
+
     /** 承载状态栏+卡片区的sheet,点击"+"后上移露出面板 */
     private lateinit var sheet: View
+
+    /** 三行卡片容器（Z 轴抬升对象） */
+    private lateinit var rowTop: ViewGroup
+    private lateinit var rowMiddle: ViewGroup
+    private lateinit var rowBottom: ViewGroup
 
     /** 面板是否已展开 */
     private var panelExpanded = false
@@ -107,6 +119,14 @@ class MainActivity : AppCompatActivity() {
         cardDataSource = LocalCardDataSource()
 
         sheet = findViewById<View>(R.id.sheet)
+        rowTop = findViewById(R.id.row_top)
+        rowMiddle = findViewById(R.id.row_middle)
+        rowBottom = findViewById(R.id.row_bottom)
+        // 行容器/sheet 只用于 Z 轴排序,不画自己的矩形阴影（空 outline 阻止整块阴影）
+        setContainerNoShadow(sheet)
+        setContainerNoShadow(rowTop)
+        setContainerNoShadow(rowMiddle)
+        setContainerNoShadow(rowBottom)
         setupStatusBar()
         setupQuickBar()
         setupPanel()
@@ -170,7 +190,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 创建应用面板并绑定数据源（面板平时被卡片区覆盖） */
     private fun setupPanel() {
-        val panelContainer = findViewById<View>(R.id.panel_container)
+        panelContainer = findViewById<View>(R.id.panel_container)
         panelView = AppPanelView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -181,8 +201,36 @@ class MainActivity : AppCompatActivity() {
                 // 面板内不刷快捷栏(避免主线程重建卡顿),退出面板后再刷新
                 quickBarDirty = true
             }
+            // 两排正方形格子的高度即面板高度,动态调整 panel_container 高度
+            onPanelHeight = { heightPx ->
+                val lp = panelContainer.layoutParams
+                if (lp.height != heightPx) {
+                    lp.height = heightPx
+                    panelContainer.layoutParams = lp
+                }
+            }
         }
         (panelContainer as android.widget.FrameLayout).addView(panelView)
+
+        // 面板展开时覆盖卡片区的天蓝亮蒙版:加在内容根最顶层,盖住卡片区(含卡片)
+        val contentRoot = window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content)
+        panelGlow = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(
+                    Color.parseColor("#33E0F7FF"),  // 上:亮天蓝半透明
+                    Color.parseColor("#00000000")   // 下:透明
+                )
+            )
+            visibility = View.INVISIBLE
+            isClickable = true       // 拦截点击,防止误触下层卡片
+            isFocusable = false      // 不抢焦点,焦点保持在面板内
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        contentRoot?.addView(panelGlow)
 
         // 异步加载应用列表
         lifecycleScope.launch {
@@ -198,20 +246,24 @@ class MainActivity : AppCompatActivity() {
         if (panelExpanded) return
         panelExpanded = true
         panelView.setExpanded(true)
+        // 天蓝亮蒙版覆盖卡片区,营造面板凸起的光感
+        panelGlow?.visibility = View.VISIBLE
         // 屏蔽卡片区/状态栏/快捷栏的焦点,焦点只能停留在面板内,仅返回键能跳出
         setSheetFocusable(false)
         setQuickBarFocusable(false)
 
         // 记录当前焦点,返回时恢复
         focusRestoreView = currentFocus
-        // 上移 sheet(状态栏+卡片区) 216dp = 面板高度,露出底部面板;快捷栏不动
-        val shift = dpToPx(216)
+        // 上移 sheet(状态栏+卡片区) 露出底部面板(高度=两排格子);快捷栏不动
+        val shift = panelContainer.height.coerceAtLeast(dpToPx(100))
         sheet.animate().translationY(-shift.toFloat())
-            .setDuration(220)
+            .setDuration(350)
             .setInterpolator(DecelerateInterpolator())
             .withEndAction {
                 // 动画被中断(快速连按返回)时跳过:不把焦点硬塞给已被禁用的面板
                 if (!panelExpanded) return@withEndAction
+                // 动画结束面板完全露出后才抬升 Z 轴,让底部阴影带显示(全程保持"拉被子"观感)
+                panelContainer.elevation = dpToPx(10).toFloat()
                 panelView.post { panelView.requestFocusOnFirst() }
             }
             .start()
@@ -222,8 +274,12 @@ class MainActivity : AppCompatActivity() {
         if (!panelExpanded) return
         panelExpanded = false
         panelView.setExpanded(false)
+        // 降回 Z 轴,让卡片区(main_container)重新盖住面板
+        panelContainer.elevation = 0f
+        // 隐藏天蓝亮蒙版,卡片区恢复原色
+        panelGlow?.visibility = View.INVISIBLE
         sheet.animate().translationY(0f)
-            .setDuration(220)
+            .setDuration(350)
             .setInterpolator(DecelerateInterpolator())
             .withEndAction {
                 // 动画被中断(快速连按展开)时跳过:面板可能已被再次展开
@@ -286,6 +342,10 @@ class MainActivity : AppCompatActivity() {
         iviCard.onCardClicked = {
             showDarkToast(R.string.not_configured)
         }
+        // IVI 卡聚焦时抬升 sheet,使其放大后的阴影/边框盖过快捷栏
+        iviCard.onCardFocusChanged = { hasFocus ->
+            setSheetRaised(hasFocus)
+        }
 
         val mainContent = findViewById<LinearLayout>(R.id.main_content)
         // IVI 和右侧卡片是一个整体，内部间距统一 8dp；right_panel 的右边距移至此处作为 leftMargin
@@ -304,16 +364,13 @@ class MainActivity : AppCompatActivity() {
 
     /** 构建8张右侧卡片（上排3张+中排2张+下排3张），设置间隙 */
     private fun buildCards() {
-        val rowTop = findViewById<LinearLayout>(R.id.row_top)
-        val rowMiddle = findViewById<LinearLayout>(R.id.row_middle)
-        val rowBottom = findViewById<LinearLayout>(R.id.row_bottom)
-
         val gapH = dpToPx(8)  // card_gap_horizontal
         val halfGapH = gapH / 2
 
         // 上排：3张竖卡（图标在上）
         for (i in 0 until 3) {
             val card = createCard(isWide = false)
+            card.onCardFocusChanged = { hasFocus -> setRowRaised(rowTop, hasFocus) }
             rowTop.addView(
                 card, LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
@@ -326,6 +383,7 @@ class MainActivity : AppCompatActivity() {
         // 中排：2张横卡（图标在左）
         for (i in 0 until 2) {
             val card = createCard(isWide = true)
+            card.onCardFocusChanged = { hasFocus -> setRowRaised(rowMiddle, hasFocus) }
             rowMiddle.addView(
                 card, LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
@@ -338,6 +396,11 @@ class MainActivity : AppCompatActivity() {
         // 下排：3张功能卡片（应用列表/设置/文件管理）——整图模式,无图标无名称
         for (i in 0 until 3) {
             val card = createCard(isWide = false)
+            card.onCardFocusChanged = { hasFocus ->
+                setRowRaised(rowBottom, hasFocus)
+                // 底排放大溢出到快捷栏区域,同步抬升 sheet 使阴影不被快捷栏切断
+                setSheetRaised(hasFocus)
+            }
             rowBottom.addView(
                 card, LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
@@ -361,6 +424,39 @@ class MainActivity : AppCompatActivity() {
         }
         cardViews.add(card)
         return card
+    }
+
+    // ─── Z 轴抬升（解决卡片放大/阴影被相邻卡片遮挡） ─────────────────
+
+    /**
+     * 让容器不再画自己的矩形阴影,只保留 Z 轴排序能力。
+     * 无背景的 View 设 elevation 会用完整边界矩形画一整块阴影,
+     * 空 outline 可阻止,否则抬行时整排会连成一块矩形阴影。
+     */
+    private fun setContainerNoShadow(container: View) {
+        container.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                // 空 outline:不画阴影,但 elevation 仍参与 Z 轴排序
+            }
+        }
+    }
+
+    /**
+     * 抬升某一行到其他行之上,让该行聚焦卡片的放大+阴影盖过相邻行。
+     * 行是 right_panel 的兄弟子节点,按绘制顺序 上->中->下,
+     * 只有抬高行的 elevation 才能让它连同阴影排到其他行前。
+     */
+    private fun setRowRaised(row: View, raised: Boolean) {
+        row.elevation = if (raised) dpToPx(20).toFloat() else 0f
+    }
+
+    /**
+     * 抬升 sheet(状态栏+卡片区)盖过快捷栏,解决 IVI 卡和底排卡
+     * 聚焦放大后向下溢出的阴影/边框被快捷栏遮挡。
+     * 快捷栏是 sheet 的兄弟,后绘制会盖住 sheet 溢出的部分。
+     */
+    private fun setSheetRaised(raised: Boolean) {
+        sheet.elevation = if (raised) dpToPx(24).toFloat() else 0f
     }
 
     // ─── App Loading & Background ─────────────────────────────────

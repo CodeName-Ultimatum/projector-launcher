@@ -33,16 +33,24 @@ class AppPanelView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
-    /** 每行应用数量 */
-    private val perRow = 6
+    /** 目标格子尺寸(dp):自适应列数使每格尽量接近此宽度 */
+    private val targetCellSize = 108
 
     /** 面板展开时的勾选回调,参数为(包名, 是否已加入常用栏) */
     var onToggle: ((String, Boolean) -> Unit)? = null
+
+    /** 面板高度回调:两排正方形格子算出的面板需要高度(px),供 MainActivity 动态设置 panel_container 高度 */
+    var onPanelHeight: ((Int) -> Unit)? = null
 
     private var store: QuickAppsStore? = null
     private var apps = listOf<AppRepository.AppInfo>()
     private val addedPackages = mutableSetOf<String>()
     private lateinit var recyclerView: RecyclerView
+    private var currentSpanCount = 6
+
+    /** 面板展开时的上下边缘阴影带(展开显示,收起隐藏) */
+    private var shadowTop: View? = null
+    private var shadowBottom: View? = null
 
     init {
         // 面板自身不获焦,焦点给格子;收起时阻止子项获焦
@@ -50,9 +58,12 @@ class AppPanelView @JvmOverloads constructor(
         descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         // 面板根透明,露出 panel_container 的 panel_bg 底色
         setBackgroundColor(Color.TRANSPARENT)
+        // 允许阴影带越界绘制到面板边缘之外(面板外向上/向下扩散)
+        clipChildren = false
+        clipToPadding = false
 
         recyclerView = RecyclerView(context).apply {
-            layoutManager = GridLayoutManager(context, perRow, RecyclerView.VERTICAL, false)
+            layoutManager = GridLayoutManager(context, currentSpanCount, RecyclerView.VERTICAL, false)
             adapter = AppPanelAdapter()
             setHasFixedSize(true)
             // 关闭默认 item 动画:格子自带 scale 动画,默认 animator 在焦点/刷新时叠加动画导致卡顿
@@ -66,8 +77,51 @@ class AppPanelView @JvmOverloads constructor(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            // 宽度确定后自适应列数:目标格宽 targetCellSize,格子=可用宽/列数(正方形)
+            addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
+                val widthDp = (r - l) / resources.displayMetrics.density
+                val span = (widthDp / targetCellSize).toInt().coerceAtLeast(1)
+                val cellPx = (r - l) / span
+                if (span != currentSpanCount) {
+                    currentSpanCount = span
+                    (layoutManager as GridLayoutManager).spanCount = span
+                    adapter?.notifyDataSetChanged()
+                }
+                // 面板高度 = 两排正方形格子高度
+                onPanelHeight?.invoke(cellPx * 2)
+            }
         }
         addView(recyclerView)
+
+        // 面板上下边缘阴影带:展开时显示,从面板边缘向外扩散,营造面板从底部浮出的层次感
+        shadowTop = createShadowBar(isTop = true)
+        shadowBottom = createShadowBar(isTop = false)
+    }
+
+    /**
+     * 创建一条阴影带 View 并添加到面板,阴影从面板边缘向面板外渐隐
+     * @param isTop true=顶部阴影带(画在面板上边缘外侧,向上渐隐), false=底部阴影带(向下渐隐)
+     */
+    private fun createShadowBar(isTop: Boolean): View {
+        val barHeight = context.dpToPx(12)
+        val bar = View(context).apply {
+            background = GradientDrawable(
+                if (isTop) GradientDrawable.Orientation.BOTTOM_TOP else GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.parseColor("#66000000"), Color.TRANSPARENT)
+            )
+            visibility = View.INVISIBLE
+        }
+        val lp = LayoutParams(LayoutParams.MATCH_PARENT, barHeight).apply {
+            if (isTop) {
+                gravity = Gravity.TOP
+                topMargin = -barHeight // 负边距:整条阴影带移到面板顶边之外,从边缘向上渐隐
+            } else {
+                gravity = Gravity.BOTTOM
+                bottomMargin = -barHeight // 整条阴影带移到面板底边之外,从边缘向下渐隐
+            }
+        }
+        addView(bar, lp)
+        return bar
     }
 
     fun bind(store: QuickAppsStore) {
@@ -95,12 +149,16 @@ class AppPanelView @JvmOverloads constructor(
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             recyclerView.isFocusable = true
             recyclerView.isEnabled = true
+            shadowTop?.visibility = View.VISIBLE
+            shadowBottom?.visibility = View.VISIBLE
         } else {
             descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             // 禁用 RecyclerView 使收起态格子不可聚焦,不拦截卡片区/快捷栏的 D-pad 导航
             recyclerView.isEnabled = false
             recyclerView.isFocusable = false
             recyclerView.clearFocus()
+            shadowTop?.visibility = View.INVISIBLE
+            shadowBottom?.visibility = View.INVISIBLE
         }
     }
 
@@ -133,8 +191,12 @@ class AppPanelView @JvmOverloads constructor(
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            // 格子高 = 面板高(216dp)的一半,两排刚好填满面板
-            val cellHeight = parent.context.dpToPx(108)
+            // 格子做成自适应正方形:宽 = RecyclerView宽/列数,高 = 同宽
+            val rvWidth = parent.width
+            val cellWidth = (rvWidth / currentSpanCount).coerceAtLeast(1)
+            val cellHeight = cellWidth
+            // 图标放大到格子宽的 70%
+            val iconSize = (cellWidth * 0.7f).toInt()
 
             val normalBg = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
@@ -156,10 +218,7 @@ class AppPanelView @JvmOverloads constructor(
             }
 
             val iconView = ImageView(parent.context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    parent.context.dpToPx(56),
-                    parent.context.dpToPx(56)
-                )
+                layoutParams = LinearLayout.LayoutParams(iconSize, iconSize)
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 isFocusable = false
             }

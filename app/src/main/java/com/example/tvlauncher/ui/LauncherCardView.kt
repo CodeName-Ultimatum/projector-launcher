@@ -3,75 +3,73 @@ package com.example.tvlauncher.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Outline
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
-import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
+import androidx.cardview.widget.CardView
 import com.example.tvlauncher.util.dpToPx
 import com.example.tvlauncher.util.setSafeOnClickListener
 import com.example.tvlauncher.util.setSafeOnLongClickListener
 import com.bumptech.glide.Glide
 
 /**
- * 启动器卡片视图 — 每张卡片包含：
+ * 启动器卡片视图 — 继承 CardView 提供聚焦阴影，内部 contentView 承载内容：
  *   - 背景图片（从全局背景图裁剪的图块，或通过 setCardImageUrl 加载的整图）
  *   - 半透明彩色覆盖层（纯色或渐变，带 alpha 通道）
- *   - 聚焦时的白色矩形边框 + Google 原生双层阴影
+ *   - 聚焦时的白色矩形边框 + CardView 原生阴影（仅聚焦时 elevation 8dp）
+ *
+ * 阴影圆角 8dp，内容保持直角（clipToOutline = false），与旧版自定义阴影观感一致。
  */
 class LauncherCardView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : FrameLayout(context, attrs, defStyleAttr) {
+) : CardView(context, attrs, defStyleAttr) {
 
+    private val contentView: FrameLayout
     private val overlayLayer: View
     private val borderView: View
 
-    // 在 onSizeChanged 中初始化的轮廓半径（dp 转 px）
-    private var outlineRadius = 0f
+    // 聚焦时卡片放大比例
+    private val focusScale = 1.10f
 
     var onCardClicked: (() -> Unit)? = null
     var onCardLongClicked: (() -> Unit)? = null
+    /** 焦点变化回调：true=获焦, false=失焦。供 MainActivity 做 Z 轴抬升 */
+    var onCardFocusChanged: ((Boolean) -> Unit)? = null
 
     init {
-        setBackgroundColor(Color.TRANSPARENT)
+        // 阴影只画在卡片四周，圆角 8dp；内容不被裁切，保持直角矩形
+        radius = context.dpToPx(8).toFloat()
+        clipToOutline = false
+        // CardView 的背景透明；阴影颜色调深，让聚焦阴影更明显
+        setCardBackgroundColor(Color.TRANSPARENT)
+        outlineSpotShadowColor = Color.argb(0xFF, 0, 0, 0)   // rgba(0,0,0,1.0) 接近纯黑
+        outlineAmbientShadowColor = Color.argb(0x80, 0, 0, 0) // rgba(0,0,0,0.5)
+        // API 28+ 阴影绘制在视图边界外，父容器已 clipChildren=false，无需 compat padding
+
         // 不裁切子视图，允许聚焦放大时边框超出卡片边界
         clipChildren = false
         clipToPadding = false
 
-        // ─── Google 原生双层阴影（elevation + OutlineProvider） ───
-        // spot 接触阴影 40% | ambient 环境阴影 12% | 比例 ≈ 3.3:1
-        outlineSpotShadowColor = Color.argb(0x66, 0, 0, 0)   // rgba(0,0,0, 0.4) ≈ 0x66
-        outlineAmbientShadowColor = Color.argb(0x1F, 0, 0, 0) // rgba(0,0,0, 0.12) ≈ 0x1F
-
-        // 设置圆角轮廓，系统据此绘制阴影形状
-        outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                if (outlineRadius > 0f) {
-                    outline.setRoundRect(
-                        0, 0, view.width, view.height,
-                        outlineRadius
-                    )
-                }
-            }
+        // ─── contentView：承载 背景图 → 覆盖层 → 白框 三层 ───
+        contentView = FrameLayout(context).apply {
+            // 背景图/覆盖层由外部方法设置，这里仅建立结构
         }
-        // clipToOutline = false：阴影用轮廓形状，但背景图片/覆盖层不被裁切
-        clipToOutline = false
+        addView(contentView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
 
         // ─── 第1层：半透明彩色覆盖层（位于背景图之上）───
-        // 优先级低于 border，高于背景图
         overlayLayer = View(context).apply {
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
-        addView(overlayLayer)
+        contentView.addView(overlayLayer)
 
         // ─── 最上层：聚焦白色边框，默认隐藏 ───
         borderView = View(context).apply {
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             val border = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 // 3dp 纯白描边，紧贴卡片边缘
@@ -80,7 +78,7 @@ class LauncherCardView @JvmOverloads constructor(
             background = border
             visibility = View.INVISIBLE
         }
-        addView(borderView)
+        contentView.addView(borderView)
 
         // ─── 卡片的交互配置 ───
         isFocusable = true
@@ -99,19 +97,20 @@ class LauncherCardView @JvmOverloads constructor(
             true
         }
 
-        // ─── 聚焦状态切换：放大动画 + 原生阴影 + 白色边框 ───
+        // ─── 聚焦状态切换：放大动画 + CardView 阴影 + 白色边框 ───
         onFocusChangeListener = OnFocusChangeListener { _, hasFocus ->
+            onCardFocusChanged?.invoke(hasFocus)
             if (hasFocus) {
-                // 提升 Z 轴高度，触发原生双层阴影，同时防止放大后被相邻卡片遮挡
-                elevation = context.dpToPx(12).toFloat()
+                // 提升 CardView 阴影高度，触发原生双层阴影
+                cardElevation = context.dpToPx(12).toFloat()
                 // 放大至110%，150ms弹性动画
-                animate().scaleX(1.10f).scaleY(1.10f).setDuration(150)
+                animate().scaleX(focusScale).scaleY(focusScale).setDuration(150)
                     .setInterpolator(android.view.animation.DecelerateInterpolator())
                     .start()
                 borderView.visibility = View.VISIBLE
             } else {
-                // 恢复 Z 轴高度
-                elevation = 0f
+                // 恢复 CardView 阴影高度
+                cardElevation = 0f
                 // 恢复原始大小
                 animate().scaleX(1.0f).scaleY(1.0f).setDuration(150)
                     .setInterpolator(android.view.animation.DecelerateInterpolator())
@@ -121,14 +120,6 @@ class LauncherCardView @JvmOverloads constructor(
         }
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        // 初始化圆角轮廓半径：与卡片视觉圆角（8dp）一致，系统据此绘制阴影
-        outlineRadius = context.dpToPx(8).toFloat()
-        // 触发 outline 重新计算
-        invalidateOutline()
-    }
-
     // ─── 外部调用的设置方法 ───
 
     /** 设置卡片的背景裁剪图块 */
@@ -136,7 +127,7 @@ class LauncherCardView @JvmOverloads constructor(
         val bgDrawable = BitmapDrawable(resources, bitmap).apply {
             gravity = Gravity.FILL
         }
-        background = bgDrawable
+        contentView.background = bgDrawable
     }
 
     /** 使用 Glide 加载整卡图片到卡片背景,替代背景图块 */
@@ -149,7 +140,7 @@ class LauncherCardView @JvmOverloads constructor(
                     resource: android.graphics.drawable.Drawable,
                     transition: com.bumptech.glide.request.transition.Transition<in android.graphics.drawable.Drawable>?
                 ) {
-                    background = resource
+                    contentView.background = resource
                 }
 
                 override fun onLoadCleared(placeholder: android.graphics.drawable.Drawable?) {

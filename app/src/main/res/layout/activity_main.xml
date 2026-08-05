@@ -22,8 +22,9 @@
     android:clipToPadding="false">
 
     <!--
-        应用面板容器 — 底层，216dp 两排应用
-        点"+"后卡片区上移 216dp 露出；面板底对齐快捷栏顶
+        应用面板容器 — 底层,两排应用
+        高度运行时由两排正方形格子动态决定(默认216dp占位)
+        点"+"后卡片区上移露出；面板底对齐快捷栏顶
     -->
     <FrameLayout
         android:id="@+id/panel_container"
