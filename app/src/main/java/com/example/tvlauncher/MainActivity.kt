@@ -191,6 +191,16 @@ class MainActivity : AppCompatActivity() {
     /** 创建应用面板并绑定数据源（面板平时被卡片区覆盖） */
     private fun setupPanel() {
         panelContainer = findViewById<View>(R.id.panel_container)
+        // 面板容器抬升 Z 轴时不画自己的矩形阴影(背景不透明,否则会投出被快捷栏裁剪的原生阴影)
+        setContainerNoShadow(panelContainer)
+        // 面板底色:上亮下暗垂直渐变,呼应面板从卡片区下方浮起的受光感
+        panelContainer.background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(
+                Color.parseColor("#3A5BA0"),  // 顶:亮中蓝
+                Color.parseColor("#2E3D5C")   // 底:深蓝灰(原面板底色)
+            )
+        )
         panelView = AppPanelView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -264,6 +274,7 @@ class MainActivity : AppCompatActivity() {
                 if (!panelExpanded) return@withEndAction
                 // 动画结束面板完全露出后才抬升 Z 轴,让底部阴影带显示(全程保持"拉被子"观感)
                 panelContainer.elevation = dpToPx(10).toFloat()
+                panelView.setBottomShadowVisible(true)
                 panelView.post { panelView.requestFocusOnFirst() }
             }
             .start()

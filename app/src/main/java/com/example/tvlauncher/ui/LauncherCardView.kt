@@ -48,7 +48,7 @@ class LauncherCardView @JvmOverloads constructor(
         // CardView 的背景透明；阴影颜色调深，让聚焦阴影更明显
         setCardBackgroundColor(Color.TRANSPARENT)
         outlineSpotShadowColor = Color.argb(0xFF, 0, 0, 0)   // rgba(0,0,0,1.0) 接近纯黑
-        outlineAmbientShadowColor = Color.argb(0x80, 0, 0, 0) // rgba(0,0,0,0.5)
+        outlineAmbientShadowColor = Color.argb(0xE6, 0, 0, 0) // rgba(0,0,0,0.9)
         // API 28+ 阴影绘制在视图边界外，父容器已 clipChildren=false，无需 compat padding
 
         // 不裁切子视图，允许聚焦放大时边框超出卡片边界
