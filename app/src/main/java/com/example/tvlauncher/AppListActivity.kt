@@ -21,12 +21,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 已安装应用列表 — 居中网格
+ * 已安装应用列表 — 靠左网格
  *
- * 结构：ScrollView > 垂直LinearLayout（gravity=CENTER，整体居中）
- *   - 每行6个 88dp 正方形应用框
- *   - 横向/纵向间隙统一 12dp
- *   - 网格块水平垂直居中，四周留白
+ * 结构：ScrollView > 垂直LinearLayout（靠左排列）
+ *   - 每行6个 110dp 正方形应用框
+ *   - 横向/纵向间隙统一 8dp
+ *   - 网格靠左，行内从左排起，未满行也靠左
  *   - 聚焦：1.1x缩放 + 4dp白色描边
  */
 class AppListActivity : AppCompatActivity() {
@@ -82,10 +82,9 @@ class AppListActivity : AppCompatActivity() {
             clipToPadding = false
         }
 
-        // 外层垂直容器：撑满宽度 + gravity=CENTER_HORIZONTAL 让面板水平居中
+        // 外层垂直容器：撑满宽度 + 靠左排列（不居中，网格从左侧排起）
         gridContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
             clipChildren = false
             clipToPadding = false
             setPadding(0, dpToPx(12), 0, dpToPx(12))
@@ -106,7 +105,8 @@ class AppListActivity : AppCompatActivity() {
             setBackgroundColor(Color.TRANSPARENT)
             clipChildren = false
             clipToPadding = false
-            setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
+            // 左边距 36dp 对齐主界面安全边距(防过扫描),右侧保留小边距
+            setPadding(dpToPx(36), dpToPx(12), dpToPx(12), dpToPx(12))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -162,7 +162,8 @@ class AppListActivity : AppCompatActivity() {
     /** 创建一个水平行，非首行加顶部间隙；行背景透明，横向间隙露出深蓝底 */
     private fun createRow(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER
+        // 靠左排列：行内按钮从左排起，未满行也靠左
+        gravity = Gravity.LEFT
         setBackgroundColor(Color.TRANSPARENT)
         clipChildren = false
         clipToPadding = false
