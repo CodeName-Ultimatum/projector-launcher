@@ -114,14 +114,14 @@ class AppPanelView @JvmOverloads constructor(
     }
 
     /**
-     * 创建一条阴影带 View 并添加到面板,阴影从面板边缘向面板外渐隐
-     * @param isTop true=顶部阴影带(画在面板上边缘外侧,向上渐隐), false=底部阴影带(向下渐隐)
+     * 创建一条阴影带 View 并添加到面板,阴影从面板边缘向面板内部渐隐(1dp)
+     * @param isTop true=顶部阴影带(贴面板顶边,向下渐隐), false=底部阴影带(贴面板底边,向上渐隐)
      */
     private fun createShadowBar(isTop: Boolean): View {
-        val barHeight = context.dpToPx(12)
+        val barHeight = context.dpToPx(2)
         val bar = View(context).apply {
             background = GradientDrawable(
-                if (isTop) GradientDrawable.Orientation.BOTTOM_TOP else GradientDrawable.Orientation.TOP_BOTTOM,
+                if (isTop) GradientDrawable.Orientation.TOP_BOTTOM else GradientDrawable.Orientation.BOTTOM_TOP,
                 intArrayOf(Color.parseColor("#66000000"), Color.TRANSPARENT)
             )
             visibility = View.INVISIBLE
@@ -129,10 +129,10 @@ class AppPanelView @JvmOverloads constructor(
         val lp = LayoutParams(LayoutParams.MATCH_PARENT, barHeight).apply {
             if (isTop) {
                 gravity = Gravity.TOP
-                topMargin = -barHeight // 负边距:整条阴影带移到面板顶边之外,从边缘向上渐隐
+                topMargin = 0 // 贴面板顶边,阴影向面板内部渐隐
             } else {
                 gravity = Gravity.BOTTOM
-                bottomMargin = -barHeight // 整条阴影带移到面板底边之外,从边缘向下渐隐
+                bottomMargin = 0 // 贴面板底边,阴影向面板内部渐隐
             }
         }
         addView(bar, lp)

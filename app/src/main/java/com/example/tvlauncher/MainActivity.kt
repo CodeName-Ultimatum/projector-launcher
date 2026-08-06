@@ -256,8 +256,6 @@ class MainActivity : AppCompatActivity() {
         if (panelExpanded) return
         panelExpanded = true
         panelView.setExpanded(true)
-        // 天蓝亮蒙版覆盖卡片区,营造面板凸起的光感
-        panelGlow?.visibility = View.VISIBLE
         // 屏蔽卡片区/状态栏/快捷栏的焦点,焦点只能停留在面板内,仅返回键能跳出
         setSheetFocusable(false)
         setQuickBarFocusable(false)
@@ -274,12 +272,14 @@ class MainActivity : AppCompatActivity() {
             .withEndAction {
                 // 动画被中断(快速连按返回)时跳过:不把焦点硬塞给已被禁用的面板
                 if (!panelExpanded) return@withEndAction
-                // Z 轴层级:卡片区最高(24dp) > 面板(10dp) > 快捷栏(0)
-                // 动画结束面板完全露出后抬升,全程保持"拉被子"观感
+                // Z 轴层级:卡片区最高(24dp) > 快捷栏 > 面板最下层(0)
+                // 面板 shadow 朝内(1dp),不依赖盖过快捷栏
                 sheet.elevation = dpToPx(24).toFloat()
-                panelContainer.elevation = dpToPx(10).toFloat()
-                // 底部阴影带随动画已画出;完全展开后顶部阴影带才显示
+                panelContainer.elevation = 0f
+                // 顶部阴影带完全展开后显示
                 panelView.setTopShadowVisible(true)
+                // 面板完全展开后才盖卡片区蒙版:只罩卡片区(屏幕顶部到面板顶边)
+                showPanelGlow()
             }
             .start()
     }
@@ -319,6 +319,23 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .start()
+    }
+
+    /**
+     * 面板完全展开后显示蒙版:只罩卡片区(屏幕顶部到面板顶边),不罩面板。
+     * 蒙版高度 = 面板容器顶边 y,即卡片区上移后占用的区域。
+     */
+    private fun showPanelGlow() {
+        val glow = panelGlow ?: return
+        val top = panelContainer.top.coerceAtLeast(0)
+        val lp = glow.layoutParams
+        if (lp.height != top) {
+            lp.height = top
+            glow.layoutParams = lp
+        }
+        // 蒙版 elevation 高于卡片区(24dp),确保盖住整个卡片区不被 sheet 遮挡
+        glow.elevation = dpToPx(30).toFloat()
+        glow.visibility = View.VISIBLE
     }
 
     /** 切换 sheet(状态栏+卡片区)是否可聚焦 */
