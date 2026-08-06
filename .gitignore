@@ -7,3 +7,6 @@ build/
 local.properties
 *.iml
 .idea/
+
+# 单元测试(不提交)
+app/src/test/

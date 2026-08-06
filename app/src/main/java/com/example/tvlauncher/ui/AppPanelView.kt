@@ -48,11 +48,20 @@ class AppPanelView @JvmOverloads constructor(
     private lateinit var recyclerView: RecyclerView
     private var currentSpanCount = 6
 
+    /** 稳定的格子边长(px):布局确定后在监听里缓存,onCreateViewHolder 复用,避免每次 parent.width 现算导致抖动 */
+    private var cellSizePx = 0
+
     /** 面板展开时的上下边缘阴影带(展开显示,收起隐藏) */
     private var shadowTop: View? = null
     private var shadowBottom: View? = null
 
     init {
+        // 用屏幕宽度预计算初始列数/格宽,确保 onCreateViewHolder 先于布局监听触发时也有正确尺寸
+        val screenW = context.resources.displayMetrics.widthPixels
+        val screenWDp = screenW / context.resources.displayMetrics.density
+        currentSpanCount = (screenWDp / targetCellSize).toInt().coerceAtLeast(1)
+        cellSizePx = Math.round(screenW.toFloat() / currentSpanCount)
+
         // 面板自身不获焦,焦点给格子;收起时阻止子项获焦
         isFocusable = false
         descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
@@ -71,6 +80,7 @@ class AppPanelView @JvmOverloads constructor(
             isVerticalScrollBarEnabled = false
             overScrollMode = OVER_SCROLL_NEVER
             clipToPadding = false
+            clipChildren = false
             // RecyclerView 透明,不盖住面板底色
             setBackgroundColor(Color.TRANSPARENT)
             layoutParams = LayoutParams(
@@ -79,11 +89,16 @@ class AppPanelView @JvmOverloads constructor(
             )
             // 宽度确定后自适应列数:目标格宽 targetCellSize,格子=可用宽/列数(正方形)
             addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
-                val widthDp = (r - l) / resources.displayMetrics.density
+                val widthPx = r - l
+                if (widthPx <= 0) return@addOnLayoutChangeListener
+                val widthDp = widthPx / resources.displayMetrics.density
                 val span = (widthDp / targetCellSize).toInt().coerceAtLeast(1)
-                val cellPx = (r - l) / span
-                if (span != currentSpanCount) {
-                    currentSpanCount = span
+                // 用 Math.round 避免整数除法截断,格宽 = 可用宽/列数(正方形)
+                val cellPx = Math.round(widthPx.toFloat() / span)
+                val changed = span != currentSpanCount || cellPx != cellSizePx
+                currentSpanCount = span
+                cellSizePx = cellPx
+                if (changed) {
                     (layoutManager as GridLayoutManager).spanCount = span
                     adapter?.notifyDataSetChanged()
                 }
@@ -149,9 +164,9 @@ class AppPanelView @JvmOverloads constructor(
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             recyclerView.isFocusable = true
             recyclerView.isEnabled = true
-            shadowTop?.visibility = View.VISIBLE
-            // 底部阴影带由 MainActivity 在展开动画结束后单独显示,避免被快捷栏裁剪
-            shadowBottom?.visibility = View.INVISIBLE
+            // 底部阴影带随展开动画一起画出;顶部阴影带由 MainActivity 在完全展开后显示
+            shadowTop?.visibility = View.INVISIBLE
+            shadowBottom?.visibility = View.VISIBLE
         } else {
             descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             // 禁用 RecyclerView 使收起态格子不可聚焦,不拦截卡片区/快捷栏的 D-pad 导航
@@ -163,9 +178,9 @@ class AppPanelView @JvmOverloads constructor(
         }
     }
 
-    /** 单独控制底部阴影带显示(展开动画结束后调用,防止动画期间被快捷栏裁剪) */
-    fun setBottomShadowVisible(visible: Boolean) {
-        shadowBottom?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+    /** 控制顶部阴影带显示(完全展开后调用) */
+    fun setTopShadowVisible(visible: Boolean) {
+        shadowTop?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
     }
 
     /** 将焦点落到第一个应用格子上 */
@@ -197,9 +212,9 @@ class AppPanelView @JvmOverloads constructor(
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            // 格子做成自适应正方形:宽 = RecyclerView宽/列数,高 = 同宽
-            val rvWidth = parent.width
-            val cellWidth = (rvWidth / currentSpanCount).coerceAtLeast(1)
+            // 格子为正方形,复用布局监听里缓存的稳定边长;未就绪时兜底用 RecyclerView 当前宽/列数
+            val cellWidth = if (cellSizePx > 0) cellSizePx
+                else Math.round(parent.width.toFloat() / currentSpanCount.coerceAtLeast(1))
             val cellHeight = cellWidth
             // 图标放大到格子宽的 70%
             val iconSize = (cellWidth * 0.7f).toInt()
@@ -224,6 +239,7 @@ class AppPanelView @JvmOverloads constructor(
             }
 
             val iconView = ImageView(parent.context).apply {
+                // 初始尺寸,onBind 时按最新 cellSizePx 校正
                 layoutParams = LinearLayout.LayoutParams(iconSize, iconSize)
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 isFocusable = false
@@ -236,7 +252,10 @@ class AppPanelView @JvmOverloads constructor(
                 textSize = 13f
                 gravity = Gravity.CENTER
                 maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
+                // marquee:聚焦时通过 isSelected 触发横向滚动,长应用名完整显示
+                ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
+                marqueeRepeatLimit = -1
+                isSingleLine = true
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -260,7 +279,7 @@ class AppPanelView @JvmOverloads constructor(
                 isFocusable = false
             }
 
-            // 外层容器承载格子,固定高度决定行高
+            // 外层容器承载格子,初始高度用当前格宽,onBind 时再按最新 cellSizePx 校正
             val cell = FrameLayout(parent.context).apply {
                 layoutParams = RecyclerView.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -268,6 +287,9 @@ class AppPanelView @JvmOverloads constructor(
                 )
                 // 透明背景,露出面板底色
                 setBackgroundColor(Color.TRANSPARENT)
+                // 不裁切子视图:root 聚焦放大 1.06 后白框/边缘超出格子边界,需越界显示
+                clipChildren = false
+                clipToPadding = false
             }
             cell.addView(
                 root,
@@ -280,11 +302,8 @@ class AppPanelView @JvmOverloads constructor(
 
             cell.onFocusChangeListener = OnFocusChangeListener { _, hasFocus ->
                 root.background = if (hasFocus) focusedBg else normalBg
-                if (hasFocus) {
-                    root.animate().scaleX(1.06f).scaleY(1.06f).setDuration(150).start()
-                } else {
-                    root.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
-                }
+                // 聚焦时触发名字 marquee 滚动,长应用名完整显示;失焦停止
+                nameText.isSelected = hasFocus
             }
 
             return Holder(cell, iconView, nameText, checkView)
@@ -292,6 +311,22 @@ class AppPanelView @JvmOverloads constructor(
 
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val app = apps[position]
+            // 校正格子高度为当前格宽(正方形):view holder 可能复用旧高度,绑定时刷新
+            if (cellSizePx > 0) {
+                val lp = holder.itemView.layoutParams
+                if (lp != null && lp.height != cellSizePx) {
+                    lp.height = cellSizePx
+                    holder.itemView.layoutParams = lp
+                }
+                // 校正图标尺寸为格子宽 70%:与格子高度同理,避免复用旧尺寸
+                val iconSize = (cellSizePx * 0.7f).toInt()
+                val iconLp = holder.iconView.layoutParams
+                if (iconLp != null && iconLp.width != iconSize) {
+                    iconLp.width = iconSize
+                    iconLp.height = iconSize
+                    holder.iconView.layoutParams = iconLp
+                }
+            }
             // 复制 Drawable:图标实例与快捷栏/应用列表共享,AdaptiveIconDrawable 可变状态竞争会致图标闪烁
             holder.iconView.setImageDrawable(app.icon.constantState?.newDrawable() ?: app.icon)
             holder.nameText.text = app.label

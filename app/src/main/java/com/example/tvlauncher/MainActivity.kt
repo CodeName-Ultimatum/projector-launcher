@@ -264,6 +264,8 @@ class MainActivity : AppCompatActivity() {
 
         // 记录当前焦点,返回时恢复
         focusRestoreView = currentFocus
+        // 立即把焦点落到面板第一个格子,避免上滑动画期间焦点空白
+        panelView.post { panelView.requestFocusOnFirst() }
         // 上移 sheet(状态栏+卡片区) 露出底部面板(高度=两排格子);快捷栏不动
         val shift = panelContainer.height.coerceAtLeast(dpToPx(100))
         sheet.animate().translationY(-shift.toFloat())
@@ -272,10 +274,12 @@ class MainActivity : AppCompatActivity() {
             .withEndAction {
                 // 动画被中断(快速连按返回)时跳过:不把焦点硬塞给已被禁用的面板
                 if (!panelExpanded) return@withEndAction
-                // 动画结束面板完全露出后才抬升 Z 轴,让底部阴影带显示(全程保持"拉被子"观感)
+                // Z 轴层级:卡片区最高(24dp) > 面板(10dp) > 快捷栏(0)
+                // 动画结束面板完全露出后抬升,全程保持"拉被子"观感
+                sheet.elevation = dpToPx(24).toFloat()
                 panelContainer.elevation = dpToPx(10).toFloat()
-                panelView.setBottomShadowVisible(true)
-                panelView.post { panelView.requestFocusOnFirst() }
+                // 底部阴影带随动画已画出;完全展开后顶部阴影带才显示
+                panelView.setTopShadowVisible(true)
             }
             .start()
     }
@@ -285,8 +289,9 @@ class MainActivity : AppCompatActivity() {
         if (!panelExpanded) return
         panelExpanded = false
         panelView.setExpanded(false)
-        // 降回 Z 轴,让卡片区(main_container)重新盖住面板
+        // 降回 Z 轴,让卡片区(main_container)重新盖住面板;sheet 复位到默认层级
         panelContainer.elevation = 0f
+        sheet.elevation = 0f
         // 隐藏天蓝亮蒙版,卡片区恢复原色
         panelGlow?.visibility = View.INVISIBLE
         sheet.animate().translationY(0f)
@@ -496,9 +501,23 @@ class MainActivity : AppCompatActivity() {
             }
 
             lifecycleScope.launch {
-                // 从数据源获取卡片配置（后端未接入时返回空列表）
+                // 从数据源获取卡片配置(后端未接入时返回空列表)与全局配置(背景色)
                 val cardConfigs = withContext(Dispatchers.IO) {
                     cardDataSource.getCardConfigs()
+                }
+                val launcherConfig = withContext(Dispatchers.IO) {
+                    cardDataSource.getLauncherConfig()
+                }
+
+                // 后端下发背景色则覆盖根布局背景,否则保持本地 main_bg
+                launcherConfig.bgColor?.let { hex ->
+                    try {
+                        val color = Color.parseColor(hex)
+                        val root = findViewById<View>(R.id.main_content).rootView
+                        root.setBackgroundColor(color)
+                    } catch (e: Exception) {
+                        // 非法颜色格式,忽略保持默认
+                    }
                 }
 
                 // 在后台线程裁剪背景图（生成9个图块：0=IVI, 1-8=右侧卡片）
