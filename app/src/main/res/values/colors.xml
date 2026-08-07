@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     颜色定义文件
-    命名规则：功能_属性_修饰（如 card_overlay_3_start 表示卡片3的渐变起始色）
-    所有卡片覆盖层使用 #B3 前缀（70% alpha），确保背景图片可以透过约30%
+    命名规则：功能_属性_修饰（如 status_bar_bg 表示状态栏背景色）
 -->
 <resources>
     <color name="status_bar_bg">#CC1A1A2E</color>
     <!-- 页面底色：深蓝色 -->
-    <color name="main_bg">#FF00009B</color>
+    <color name="main_bg">#FF373778</color>
     <!-- 应用面板底色：浅蓝灰,比卡片区背景更亮,与主背景区分 -->
     <color name="panel_bg">#FF2E3D5C</color>
 
@@ -19,50 +18,12 @@
     <!-- 副文字色：70%白色 -->
     <color name="text_secondary">#B3FFFFFF</color>
 
-    <!-- ===== 卡片覆盖层颜色（alpha=70%即#B3，棋盘交替：蓝-特色-蓝-特色）===== -->
-
-    <!-- card 0：中蓝 → 亮天蓝（起点远离背景，边界清晰） -->
-    <color name="card_overlay_1_start">#B31565C0</color>
-    <color name="card_overlay_1_end">#B381D4FA</color>
-
-    <!-- card 1：电光紫 → 玫红（特色） -->
-    <color name="card_overlay_2_start">#B3E040FB</color>
-    <color name="card_overlay_2_end">#B3FF4081</color>
-
-    <!-- card 2：珊瑚橙 → 蜜橙（特色） -->
-    <color name="card_overlay_3_start">#B3FF6B6B</color>
-    <color name="card_overlay_3_end">#B3FF8E53</color>
-
-    <!-- card 3：中青 → 亮青（起点与背景拉开距离） -->
-    <color name="card_overlay_4_start">#B3008C9B</color>
-    <color name="card_overlay_4_end">#B34DD0E1</color>
-
-    <!-- card 4：中靛蓝 → 中蓝（起点与背景拉开距离） -->
-    <color name="card_overlay_5_start">#B33949AB</color>
-    <color name="card_overlay_5_end">#B37986CB</color>
-
-    <!-- card 5：翠绿 → 亮绿（特色） -->
-    <color name="card_overlay_6_start">#B300E676</color>
-    <color name="card_overlay_6_end">#B369F0AE</color>
-
-    <!-- card 6：明黄 → 琥珀（特色） -->
-    <color name="card_overlay_7_start">#B3FFD600</color>
-    <color name="card_overlay_7_end">#B3FFAB00</color>
-
-    <!-- card 7：中蓝 → 浅青（起点与背景拉开距离） -->
-    <color name="card_overlay_8_start">#B31E88E5</color>
-    <color name="card_overlay_8_end">#B34DD0E1</color>
-
     <!-- 快捷栏背景 -->
     <color name="quick_bar_bg">#CC0D1117</color>
     <!-- 添加按钮背景 -->
     <color name="add_button_bg">#33334455</color>
     <!-- 卡片聚焦白色边框 -->
     <color name="card_focused_border">#FFFFFFFF</color>
-
-    <!-- IVI面板：深青 → 亮青渐变（特色，与背景形成对比） -->
-    <color name="ivi_overlay_start">#B3008C9B</color>
-    <color name="ivi_overlay_end">#B300E5FF</color>
 
     <!-- WiFi断开连接图标着色：40%白色 -->
     <color name="wifi_icon_disconnected">#66FFFFFF</color>

@@ -18,7 +18,6 @@ import com.bumptech.glide.Glide
 /**
  * 启动器卡片视图 — 继承 CardView 提供聚焦阴影，内部 contentView 承载内容：
  *   - 背景图片（从全局背景图裁剪的图块，或通过 setCardImageUrl 加载的整图）
- *   - 半透明彩色覆盖层（纯色或渐变，带 alpha 通道）
  *   - 聚焦时的白色矩形边框 + CardView 原生阴影（仅聚焦时 elevation 8dp）
  *
  * 阴影圆角 8dp，内容保持直角（clipToOutline = false），与旧版自定义阴影观感一致。
@@ -30,7 +29,6 @@ class LauncherCardView @JvmOverloads constructor(
 ) : CardView(context, attrs, defStyleAttr) {
 
     private val contentView: FrameLayout
-    private val overlayLayer: View
     private val borderView: View
 
     // 聚焦时卡片放大比例
@@ -55,17 +53,11 @@ class LauncherCardView @JvmOverloads constructor(
         clipChildren = false
         clipToPadding = false
 
-        // ─── contentView：承载 背景图 → 覆盖层 → 白框 三层 ───
+        // ─── contentView：承载 背景图 → 白框 两层 ───
         contentView = FrameLayout(context).apply {
-            // 背景图/覆盖层由外部方法设置，这里仅建立结构
+            // 背景图由外部方法设置，这里仅建立结构
         }
         addView(contentView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-
-        // ─── 第1层：半透明彩色覆盖层（位于背景图之上）───
-        overlayLayer = View(context).apply {
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-        }
-        contentView.addView(overlayLayer)
 
         // ─── 最上层：聚焦白色边框，默认隐藏 ───
         borderView = View(context).apply {
@@ -147,23 +139,5 @@ class LauncherCardView @JvmOverloads constructor(
                     // 不清空现有背景
                 }
             })
-    }
-
-    /** 设置纯色覆盖层 */
-    fun setOverlayColor(color: Int) {
-        val overlayDrawable = GradientDrawable().apply {
-            setColor(color)
-        }
-        overlayLayer.background = overlayDrawable
-    }
-
-    /** 设置渐变覆盖层 */
-    fun setOverlayGradient(
-        startColor: Int,
-        endColor: Int,
-        orientation: GradientDrawable.Orientation
-    ) {
-        val overlayDrawable = GradientDrawable(orientation, intArrayOf(startColor, endColor))
-        overlayLayer.background = overlayDrawable
     }
 }

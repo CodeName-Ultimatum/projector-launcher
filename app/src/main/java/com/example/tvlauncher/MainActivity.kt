@@ -49,8 +49,7 @@ import kotlinx.coroutines.withContext
  *   1. setupUI    — 创建状态栏、快捷栏、应用面板、IVI面板、卡片网格
  *   2. loadApps   — 异步查询已安装应用，分配到卡片
  *   3. cutBg      — 从全局背景图裁剪9个图块，分别设给9张卡片
- *   4. overlays   — 给每张卡片设置彩色渐变覆盖层
- *   5. navigation — 设置D-pad焦点导航路径
+ *   4. navigation — 设置D-pad焦点导航路径
  */
 class MainActivity : AppCompatActivity() {
 
@@ -228,8 +227,8 @@ class MainActivity : AppCompatActivity() {
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(
-                    Color.parseColor("#33E0F7FF"),  // 上:亮天蓝半透明
-                    Color.parseColor("#00000000")   // 下:透明
+                    Color.TRANSPARENT,  // 蒙版全透明:不改上面板上下背景色,与默认屏幕一致
+                    Color.TRANSPARENT
                 )
             )
             visibility = View.INVISIBLE
@@ -364,12 +363,6 @@ class MainActivity : AppCompatActivity() {
         iviCard = LauncherCardView(this).apply {
             id = View.generateViewId()
             // 整图模式：无图标无名称,由 imageUrl 驱动
-            // 珊瑚橙渐变覆盖层
-            setOverlayGradient(
-                getColor(R.color.ivi_overlay_start),
-                getColor(R.color.ivi_overlay_end),
-                android.graphics.drawable.GradientDrawable.Orientation.TL_BR
-            )
         }
 
         iviCard.onCardClicked = {
@@ -511,9 +504,8 @@ class MainActivity : AppCompatActivity() {
             // IVI 卡片宽度 = main_content 宽度 *（IVI 权重 1 / 总权重 4）
             val iviW = mainContent.width / 4
 
-            // 如果高度无效（布局未完成），跳过背景裁剪，只设置覆盖层
+            // 如果高度无效（布局未完成），跳过背景裁剪
             if (contentHeight <= 0 || iviW <= 0 || rightW <= 0) {
-                applyOverlays()
                 return@post
             }
 
@@ -527,7 +519,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // 后端下发背景色则覆盖根布局背景,否则保持本地 main_bg
-                launcherConfig.bgColor?.let { hex ->
+                launcherConfig.screenColor?.let { hex ->
                     try {
                         val color = Color.parseColor(hex)
                         val root = findViewById<View>(R.id.main_content).rootView
@@ -572,8 +564,6 @@ class MainActivity : AppCompatActivity() {
                     // 应用后端卡片配置（当前为空列表，卡片保持占位）
                     cardConfigs.forEach { applyCardConfig(it) }
 
-                    // 设置彩色渐变覆盖层
-                    applyOverlays()
                     // 设置D-pad焦点导航
                     setupFocusNavigation()
                 }
@@ -613,57 +603,6 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             { showDarkToast(R.string.not_configured) }
-        }
-
-        // 配置了覆盖层颜色
-        if (config.overlayStartColor != null && config.overlayEndColor != null) {
-            val orientation = when (config.overlayOrientation) {
-                "LEFT_RIGHT" -> android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
-                "TOP_BOTTOM" -> android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM
-                else -> android.graphics.drawable.GradientDrawable.Orientation.TL_BR
-            }
-            card.setOverlayGradient(
-                Color.parseColor(config.overlayStartColor),
-                Color.parseColor(config.overlayEndColor),
-                orientation
-            )
-        }
-    }
-
-    // ─── Overlays ───────────────────────────────────────────────
-
-    /**
-     * 给8张右侧卡片设置彩色渐变覆盖层
-     * 每张卡片可不同：纯色或渐变，方向各异
-     */
-    private fun applyOverlays() {
-        // 每张卡片的渐变方向
-        val orientations = listOf(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,       // card 0: 对角
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,       // card 1: 对角
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,       // card 2: 对角
-            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,  // card 3: 左右
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,       // card 4: 对角
-            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,  // card 5: 上下
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,       // card 6: 对角
-            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT   // card 7: 左右
-        )
-
-        // 每张卡片的渐变起止色
-        val colors = listOf(
-            listOf(getColor(R.color.card_overlay_1_start), getColor(R.color.card_overlay_1_end)),
-            listOf(getColor(R.color.card_overlay_2_start), getColor(R.color.card_overlay_2_end)),
-            listOf(getColor(R.color.card_overlay_3_start), getColor(R.color.card_overlay_3_end)),
-            listOf(getColor(R.color.card_overlay_4_start), getColor(R.color.card_overlay_4_end)),
-            listOf(getColor(R.color.card_overlay_5_start), getColor(R.color.card_overlay_5_end)),
-            listOf(getColor(R.color.card_overlay_6_start), getColor(R.color.card_overlay_6_end)),
-            listOf(getColor(R.color.card_overlay_7_start), getColor(R.color.card_overlay_7_end)),
-            listOf(getColor(R.color.card_overlay_8_start), getColor(R.color.card_overlay_8_end))
-        )
-
-        for (i in 0 until 8) {
-            if (i >= cardViews.size) break
-            cardViews[i].setOverlayGradient(colors[i][0], colors[i][1], orientations[i])
         }
     }
 
