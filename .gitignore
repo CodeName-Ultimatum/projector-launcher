@@ -10,3 +10,7 @@ local.properties
 
 # 单元测试(不提交)
 app/src/test/
+
+# 设备测试数据与验证截图(不提交)
+data/
+screenshots/
