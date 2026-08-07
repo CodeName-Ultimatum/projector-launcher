@@ -1,6 +1,8 @@
 package com.example.tvlauncher
 
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Outline
@@ -18,7 +20,9 @@ import androidx.lifecycle.lifecycleScope
 import com.example.tvlauncher.data.AppRepository
 import com.example.tvlauncher.data.CardConfig
 import com.example.tvlauncher.data.CardDataSource
-import com.example.tvlauncher.data.LocalCardDataSource
+import com.example.tvlauncher.data.FileCardDataSource
+import com.example.tvlauncher.data.GroupApp
+import com.example.tvlauncher.data.LauncherData
 import com.example.tvlauncher.data.QuickAppsStore
 import com.example.tvlauncher.ui.AppPanelView
 import com.example.tvlauncher.ui.LauncherCardView
@@ -97,7 +101,7 @@ class MainActivity : AppCompatActivity() {
     private var focusRestoreView: View? = null
 
     /** 默认文件管理器包名（设备软通文件管理器）,可被后端 CardConfig 覆盖 */
-    private val defaultFileManagerPkg = "com.softwinner.TvdFileManager"
+    private val defaultFileManagerPackage = "com.softwinner.TvdFileManager"
 
     // ─── 常量 ─────────────────────────────────────────────────────
 
@@ -115,7 +119,7 @@ class MainActivity : AppCompatActivity() {
 
         appRepo = AppRepository(this)
         quickStore = QuickAppsStore(this)
-        cardDataSource = LocalCardDataSource()
+        cardDataSource = FileCardDataSource(this)
 
         sheet = findViewById<View>(R.id.sheet)
         rowTop = findViewById(R.id.row_top)
@@ -510,44 +514,34 @@ class MainActivity : AppCompatActivity() {
             }
 
             lifecycleScope.launch {
-                // 从数据源获取卡片配置(后端未接入时返回空列表)与全局配置(背景色)
-                val cardConfigs = withContext(Dispatchers.IO) {
-                    cardDataSource.getCardConfigs()
+                // 读取 data/data.json 并解析（IO 线程,readText 阻塞）
+                val launcherData = withContext(Dispatchers.IO) {
+                    cardDataSource.loadLauncherData()
                 }
-                val launcherConfig = withContext(Dispatchers.IO) {
-                    cardDataSource.getLauncherConfig()
-                }
+                // 已连接 WiFi 且 data.json 解析成功 → 联网模式
+                val networkMode = isWifiConnected() && launcherData != null
 
-                // 后端下发背景色则覆盖根布局背景,否则保持本地 main_bg
-                launcherConfig.screenColor?.let { hex ->
-                    try {
-                        val color = Color.parseColor(hex)
-                        val root = findViewById<View>(R.id.main_content).rootView
-                        root.setBackgroundColor(color)
-                    } catch (e: Exception) {
-                        // 非法颜色格式,忽略保持默认
-                    }
-                }
-
-                // 在后台线程裁剪背景图（生成9个图块：0=IVI, 1-8=右侧卡片）
+                // 离线模式才裁剪本地背景图
                 val cutter = withContext(Dispatchers.IO) {
-                    try {
-                        val src = BitmapFactory.decodeResource(resources, R.drawable.bg_full)
-                        BackgroundCutter(
-                            src,
-                            iviW,
-                            rightW,
-                            contentHeight,
-                            dpToPx(8),  // 卡片水平间隙
-                            dpToPx(8)   // 卡片垂直间隙
-                        )
-                    } catch (e: Exception) {
-                        null
+                    if (networkMode) {
+                        null  // 联网模式不裁剪本地背景图
+                    } else {
+                        try {
+                            val src = BitmapFactory.decodeResource(resources, R.drawable.bg_full)
+                            BackgroundCutter(
+                                src,
+                                iviW,
+                                rightW,
+                                contentHeight,
+                                dpToPx(8),  // 卡片水平间隙
+                                dpToPx(8)   // 卡片垂直间隙
+                            )
+                        } catch (e: Exception) { null }
                     }
                 }
 
-                // 回到主线程设置UI
                 withContext(Dispatchers.Main) {
+                    // 离线模式：本地背景图块
                     if (cutter != null) {
                         backgroundCutter = cutter
                         // IVI面板背景（图块0）
@@ -560,14 +554,73 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     }
-
-                    // 应用后端卡片配置（当前为空列表，卡片保持占位）
-                    cardConfigs.forEach { applyCardConfig(it) }
+                    // 联网模式：按 data.json 绑定卡片
+                    if (networkMode && launcherData != null) {
+                        bindCardsFromLauncherData(launcherData)
+                    }
 
                     // 设置D-pad焦点导航
                     setupFocusNavigation()
                 }
             }
+        }
+    }
+
+    /** 判断当前是否有可用的 WiFi 网络连接 */
+    private fun isWifiConnected(): Boolean {
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    }
+
+    /**
+     * 将 data.json 的应用按 sort 顺序绑定到固定卡片布局。
+     * 卡片顺序：0=IVI, 1-3=上排, 4-5=中排, 6-8=下排。
+     * data.json 的 groupApps 扁平化为按 sort 排列的列表，前 9 个依次绑定。
+     */
+    private fun bindCardsFromLauncherData(data: LauncherData) {
+        // 扁平化所有 productGroups 的 groupApps，按 sort 排序
+        val apps = data.modules
+            .sortedBy { it.sort }
+            .flatMap { m -> m.productGroups.sortedBy { it.sort }.flatMap { it.groupApps } }
+            .sortedBy { it.sort }
+            .filter { it.packageName != null || it.iconBgUrl != null || it.resolveIntent() != null }
+
+        val targets = listOf(iviCard) + cardViews  // 9 个卡槽
+        targets.forEachIndexed { idx, card ->
+            val app = apps.getOrNull(idx) ?: return@forEachIndexed
+            bindCard(card, app)
+        }
+    }
+
+    /** 将单个应用绑定到卡片：图片（iconBgUrl） + 点击行为（packageName/intents） */
+    private fun bindCard(card: LauncherCardView, app: GroupApp) {
+        // 图片：iconBgUrl 绝对 URL，Glide 加载
+        app.iconBgUrl?.let { card.setCardImageUrl(it) }
+
+        // 点击行为：intents 内置行为优先，否则 packageName
+        val launchPkg = resolveLaunchPackage(app)
+        card.onCardClicked = if (launchPkg != null) {
+            {
+                val intent = packageManager.getLaunchIntentForPackage(launchPkg)
+                if (intent != null) startActivity(intent)
+                else showDarkToast("应用无法启动")
+            }
+        } else {
+            { showDarkToast(R.string.not_configured) }
+        }
+    }
+
+    /**
+     * 解析应用点击目标：内置 intents 行为优先（FILE_MANAGER 用设备真实文件管理器包名，
+     * SETTINGS 用系统设置），否则用 packageName。
+     */
+    private fun resolveLaunchPackage(app: GroupApp): String? {
+        return when (app.intents) {
+            "FILE_MANAGER" -> defaultFileManagerPackage
+            "SETTINGS" -> "com.android.settings"
+            else -> app.packageName
         }
     }
 
@@ -643,7 +696,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 打开系统文件管理器应用（默认软通文件管理器,后端可通过 CardConfig.packageName 覆盖） */
     private fun openFileManager() {
-        val intent = packageManager.getLaunchIntentForPackage(defaultFileManagerPkg)
+        val intent = packageManager.getLaunchIntentForPackage(defaultFileManagerPackage)
         if (intent != null) {
             startActivity(intent)
         } else {
