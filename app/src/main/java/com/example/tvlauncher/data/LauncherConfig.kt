@@ -1,6 +1,11 @@
 package com.example.tvlauncher.data
 
-/** 后端下发的全局配置。字段为 null 时表示使用本地默认值 */
+/** 后端下发的全局配置（data.json 顶层 config 字段，JSON 字符串内嵌） */
 data class LauncherConfig(
-    val bgColor: String? = null  // 主界面背景色 "#RRGGBB",未下发时用本地 main_bg
+    val screenColor: String? = null,    // "#RRGGBB"
+    val lightMode: Boolean = false,
+    val smallIcon: Boolean = false,
+    val displayDesc: Boolean = false,
+    val displayHead: Boolean = false,
+    val displayTitle: Boolean = false
 )
