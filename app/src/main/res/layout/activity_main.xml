@@ -3,7 +3,7 @@
     主布局文件 — TV Launcher 首页
     结构：FrameLayout（根）
         ├── main_container（竖排，撑满全屏）：卡片区 + 快捷栏在同一容器,共用绘制空间
-        │   ├── 状态栏（60dp）
+        │   ├── 状态栏（72dp）
         │   ├── 卡片区（weight=1，含 IVI + 右侧网格）
         │   ├── 12dp 间距
         │   └── 快捷栏（86dp）
@@ -32,7 +32,7 @@
         android:layout_height="240dp"
         android:layout_gravity="bottom"
         android:layout_marginBottom="98dp"
-        android:clipChildren="false"
+        android:clipChildren="true"
         android:clipToPadding="false" />
 
     <!--
@@ -71,7 +71,7 @@
             <FrameLayout
                 android:id="@+id/status_bar_container"
                 android:layout_width="match_parent"
-                android:layout_height="60dp"
+                android:layout_height="72dp"
                 android:layout_marginLeft="36dp"
                 android:layout_marginRight="36dp" />
 
@@ -87,7 +87,7 @@
                 android:layout_weight="1"
                 android:layout_marginLeft="36dp"
                 android:layout_marginRight="36dp"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="0dp"
                 android:layout_marginBottom="0dp"
                 android:clipChildren="false"
                 android:clipToPadding="false"

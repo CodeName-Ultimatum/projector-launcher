@@ -197,11 +197,12 @@ class MainActivity : AppCompatActivity() {
         // 面板容器抬升 Z 轴时不画自己的矩形阴影(背景不透明,否则会投出被快捷栏裁剪的原生阴影)
         setContainerNoShadow(panelContainer)
         // 面板底色:上亮下暗垂直渐变,呼应面板从卡片区下方浮起的受光感
+        // 与 main_bg(#373778) 同色系:顶亮蓝紫 → 底深蓝紫
         panelContainer.background = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(
-                Color.parseColor("#3A5BA0"),  // 顶:亮中蓝
-                Color.parseColor("#2E3D5C")   // 底:深蓝灰(原面板底色)
+                Color.parseColor("#4A4A9C"),  // 顶:亮蓝紫
+                Color.parseColor("#2B2B5C")   // 底:深蓝紫
             )
         )
         panelView = AppPanelView(this).apply {
@@ -231,8 +232,8 @@ class MainActivity : AppCompatActivity() {
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(
-                    Color.TRANSPARENT,  // 蒙版全透明:不改上面板上下背景色,与默认屏幕一致
-                    Color.TRANSPARENT
+                    Color.parseColor("#33E0F7FF"),  // 上:亮天蓝半透明
+                    Color.parseColor("#00000000")   // 下:透明
                 )
             )
             visibility = View.INVISIBLE
@@ -303,6 +304,8 @@ class MainActivity : AppCompatActivity() {
             .withEndAction {
                 // 动画被中断(快速连按展开)时跳过:面板可能已被再次展开
                 if (panelExpanded) return@withEndAction
+                // 面板已被卡片区盖住,此时才隐藏底部阴影(动画期间保持显示)
+                panelView.setBottomShadowVisible(false)
                 // 恢复卡片区/状态栏/快捷栏焦点能力
                 setSheetFocusable(true)
                 setQuickBarFocusable(true)

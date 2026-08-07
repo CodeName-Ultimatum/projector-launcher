@@ -72,7 +72,12 @@ class AppPanelView @JvmOverloads constructor(
         clipToPadding = false
 
         recyclerView = RecyclerView(context).apply {
-            layoutManager = GridLayoutManager(context, currentSpanCount, RecyclerView.VERTICAL, false)
+            layoutManager = object : GridLayoutManager(context, currentSpanCount, RecyclerView.VERTICAL, false) {
+                // 焦点移动时即时跳转到目标行,不做平滑滚动(与卡片区的即时焦点切换一致,避免按键延迟感)
+                override fun smoothScrollToPosition(recyclerView: RecyclerView, state: RecyclerView.State, position: Int) {
+                    scrollToPosition(position)
+                }
+            }
             adapter = AppPanelAdapter()
             setHasFixedSize(true)
             // 关闭默认 item 动画:格子自带 scale 动画,默认 animator 在焦点/刷新时叠加动画导致卡顿
@@ -80,7 +85,7 @@ class AppPanelView @JvmOverloads constructor(
             isVerticalScrollBarEnabled = false
             overScrollMode = OVER_SCROLL_NEVER
             clipToPadding = false
-            clipChildren = false
+            clipChildren = true
             // RecyclerView 透明,不盖住面板底色
             setBackgroundColor(Color.TRANSPARENT)
             layoutParams = LayoutParams(
@@ -114,15 +119,29 @@ class AppPanelView @JvmOverloads constructor(
     }
 
     /**
-     * 创建一条阴影带 View 并添加到面板,阴影从面板边缘向面板内部渐隐(1dp)
+     * 创建一条阴影带 View 并添加到面板,阴影从面板边缘向面板内部渐隐
      * @param isTop true=顶部阴影带(贴面板顶边,向下渐隐), false=底部阴影带(贴面板底边,向上渐隐)
      */
     private fun createShadowBar(isTop: Boolean): View {
-        val barHeight = context.dpToPx(2)
+        val barHeight = context.dpToPx(4)
+        // 顶部阴影稍浓(受光面在上,边缘更清晰),底部阴影偏淡避免在深色底上过重
+        val colors = if (isTop) {
+            intArrayOf(
+                Color.parseColor("#66000000"),
+                Color.parseColor("#33000000"),
+                Color.TRANSPARENT
+            )
+        } else {
+            intArrayOf(
+                Color.parseColor("#40000000"),
+                Color.parseColor("#20000000"),
+                Color.TRANSPARENT
+            )
+        }
         val bar = View(context).apply {
             background = GradientDrawable(
                 if (isTop) GradientDrawable.Orientation.TOP_BOTTOM else GradientDrawable.Orientation.BOTTOM_TOP,
-                intArrayOf(Color.parseColor("#66000000"), Color.TRANSPARENT)
+                colors
             )
             visibility = View.INVISIBLE
         }
@@ -173,9 +192,14 @@ class AppPanelView @JvmOverloads constructor(
             recyclerView.isEnabled = false
             recyclerView.isFocusable = false
             recyclerView.clearFocus()
+            // 顶部阴影立即隐藏;底部阴影保持显示,直到收起动画结束由 MainActivity 隐藏(否则下滑动画开头就消失)
             shadowTop?.visibility = View.INVISIBLE
-            shadowBottom?.visibility = View.INVISIBLE
         }
+    }
+
+    /** 控制底部阴影带显示(收起动画结束后调用) */
+    fun setBottomShadowVisible(visible: Boolean) {
+        shadowBottom?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
     }
 
     /** 控制顶部阴影带显示(完全展开后调用) */
