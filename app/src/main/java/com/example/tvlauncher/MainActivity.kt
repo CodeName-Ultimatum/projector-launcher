@@ -557,6 +557,7 @@ class MainActivity : AppCompatActivity() {
                     // 联网模式：按 data.json 绑定卡片
                     if (networkMode && launcherData != null) {
                         bindCardsFromLauncherData(launcherData)
+                        checkAppUpdates(launcherData)
                     }
 
                     // 设置D-pad焦点导航
@@ -592,6 +593,35 @@ class MainActivity : AppCompatActivity() {
             val app = apps.getOrNull(idx) ?: return@forEachIndexed
             bindCard(card, app)
         }
+    }
+
+    /**
+     * 检查 data.json 中各应用版本：已安装且 versionCode 落后 → 弹窗提示更新。
+     * 未安装的应用不处理。
+     */
+    private fun checkAppUpdates(data: LauncherData) {
+        val apps = data.modules.flatMap { m ->
+            m.productGroups.flatMap { it.groupApps }
+        }
+        val outdated = mutableListOf<GroupApp>()
+        for (app in apps) {
+            if (app.isCheckVer != 1) continue
+            val pkg = app.packageName ?: continue
+            val installedCode = try {
+                packageManager.getPackageInfo(pkg, 0).versionCode
+            } catch (e: Exception) {
+                continue  // 未安装，跳过
+            }
+            if (installedCode < app.versionCode) outdated.add(app)
+        }
+        if (outdated.isEmpty()) return
+
+        val names = outdated.joinToString("\n") { it.appName ?: it.packageName ?: "" }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("应用有更新")
+            .setMessage("以下应用有新版本：\n$names")
+            .setPositiveButton("知道了", null)
+            .show()
     }
 
     /** 将单个应用绑定到卡片：图片（iconBgUrl） + 点击行为（packageName/intents） */
