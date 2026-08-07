@@ -626,10 +626,11 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 将单个应用绑定到卡片：图片（iconBgUrl） + 点击行为（packageName/intents） */
+    /** 将单个应用绑定到卡片：图片（iconBgUrl 优先,回退 iconUrl） + 点击行为（packageName/intents） */
     private fun bindCard(card: LauncherCardView, app: GroupApp) {
-        // 图片：iconBgUrl 绝对 URL，Glide 加载
-        app.iconBgUrl?.let { card.setCardImageUrl(it) }
+        // 图片：iconBgUrl(banner 大图)优先,缺失时回退 iconUrl(小图标)
+        val imageUrl = app.iconBgUrl ?: app.iconUrl
+        imageUrl?.let { card.setCardImageUrl(it) }
 
         // 点击行为：intents 内置行为优先，否则 packageName
         val launchPkg = resolveLaunchPackage(app)
