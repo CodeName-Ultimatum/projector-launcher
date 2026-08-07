@@ -49,6 +49,22 @@ class LauncherDataParserTest {
     }
 
     @Test
+    fun `parse treats json null strings as kotlin null`() {
+        val json = """{"config":{"screenColor":null},"modules":[{"moduleName":"home","sort":0,"productGroups":[{"groupName":"g1","sort":1,"config":null,"groupApps":[{"appName":null,"packageName":null,"iconUrl":null,"iconBgUrl":null,"md5":null,"intents":null,"config":null,"sort":1,"apkUrl":null,"isCheckVer":0,"versionName":null,"versionCode":0,"isApk":0}]}]}]}"""
+        val data = LauncherDataParser.parse(json)
+        assertNull(data.config?.screenColor)
+        val app = data.modules[0].productGroups[0].groupApps[0]
+        assertNull(app.appName)
+        assertNull(app.packageName)
+        assertNull(app.iconUrl)
+        assertNull(app.iconBgUrl)
+        assertNull(app.md5)
+        assertNull(app.intents)
+        assertNull(app.apkUrl)
+        assertNull(app.versionName)
+    }
+
+    @Test
     fun `resolveIntent maps builtin behaviors`() {
         val fm = GroupApp(intents = "FILE_MANAGER")
         val st = GroupApp(intents = "SETTINGS")
