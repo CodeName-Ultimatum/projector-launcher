@@ -584,11 +584,10 @@ class MainActivity : AppCompatActivity() {
      * data.json 的 groupApps 扁平化为按 sort 排列的列表，前 9 个依次绑定。
      */
     private fun bindCardsFromLauncherData(data: LauncherData) {
-        // 扁平化所有 productGroups 的 groupApps，按 sort 排序
+        // 按模块→组→组内顺序扁平化 groupApps（组间按 sort 连续,组内保留 data.json 顺序）
         val apps = data.modules
             .sortedBy { it.sort }
             .flatMap { m -> m.productGroups.sortedBy { it.sort }.flatMap { it.groupApps } }
-            .sortedBy { it.sort }
             .filter { it.packageName != null || it.iconBgUrl != null || it.resolveIntent() != null }
 
         val targets = listOf(iviCard) + cardViews  // 9 个卡槽
