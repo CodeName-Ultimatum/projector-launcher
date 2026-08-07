@@ -17,7 +17,7 @@ object LauncherDataParser {
     private fun parseConfig(o: JSONObject?): LauncherConfig? {
         if (o == null) return null
         return LauncherConfig(
-            screenColor = o.optString("screenColor").takeIf { it.isNotEmpty() },
+            screenColor = o.optString("screenColor").takeIf { it.isNotEmpty() && it != "null" },
             lightMode = o.optBoolean("lightMode", false),
             smallIcon = o.optBoolean("smallIcon", false),
             displayDesc = o.optBoolean("displayDesc", false),
@@ -58,12 +58,12 @@ object LauncherDataParser {
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             apps.add(GroupApp(
-                appName = o.optString("appName").takeIf { it.isNotEmpty() },
-                packageName = o.optString("packageName").takeIf { it.isNotEmpty() },
-                iconUrl = o.optString("iconUrl").takeIf { it.isNotEmpty() },
-                iconBgUrl = o.optString("iconBgUrl").takeIf { it.isNotEmpty() },
-                md5 = o.optString("md5").takeIf { it.isNotEmpty() },
-                intents = o.optString("intents").takeIf { it.isNotEmpty() },
+                appName = o.optString("appName").takeIf { it.isNotEmpty() && it != "null" },
+                packageName = o.optString("packageName").takeIf { it.isNotEmpty() && it != "null" },
+                iconUrl = o.optString("iconUrl").takeIf { it.isNotEmpty() && it != "null" },
+                iconBgUrl = o.optString("iconBgUrl").takeIf { it.isNotEmpty() && it != "null" },
+                md5 = o.optString("md5").takeIf { it.isNotEmpty() && it != "null" },
+                intents = o.optString("intents").takeIf { it.isNotEmpty() && it != "null" },
                 sort = o.optInt("sort", 0),
                 config = o.optJSONObject("config")?.let { cfg ->
                     AppConfig(
@@ -71,13 +71,13 @@ object LauncherDataParser {
                         left = cfg.optInt("left", 0),
                         width = cfg.optInt("width", 0),
                         height = cfg.optInt("height", 0),
-                        behavior = cfg.optString("behavior").takeIf { it.isNotEmpty() },
+                        behavior = cfg.optString("behavior").takeIf { it.isNotEmpty() && it != "null" },
                         displayName = cfg.optInt("displayName", 0)
                     )
                 },
-                apkUrl = o.optString("apkUrl").takeIf { it.isNotEmpty() },
+                apkUrl = o.optString("apkUrl").takeIf { it.isNotEmpty() && it != "null" },
                 isCheckVer = o.optInt("isCheckVer", 0),
-                versionName = o.optString("versionName").takeIf { it.isNotEmpty() },
+                versionName = o.optString("versionName").takeIf { it.isNotEmpty() && it != "null" },
                 versionCode = o.optInt("versionCode", 0),
                 isApk = o.optInt("isApk", 0)
             ))
