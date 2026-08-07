@@ -2,7 +2,6 @@ package com.example.tvlauncher.util
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.net.wifi.WifiManager
 import android.os.SystemClock
 import android.util.TypedValue
 import android.view.View
@@ -14,13 +13,6 @@ fun Context.dpToPx(dp: Int): Int {
         dp.toFloat(),
         resources.displayMetrics
     ).toInt()
-}
-
-/** 获取当前 WiFi 信号等级（0-5） */
-fun Context.getWifiSignalLevel(): Int {
-    val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-    val rssi = wifiManager?.connectionInfo?.rssi ?: -100
-    return WifiManager.calculateSignalLevel(rssi, 5)
 }
 
 /**

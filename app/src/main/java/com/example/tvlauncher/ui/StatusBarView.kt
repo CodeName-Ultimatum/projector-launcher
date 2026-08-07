@@ -7,6 +7,10 @@ import android.content.IntentFilter
 import android.graphics.Color
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.net.wifi.WifiManager
 import android.text.format.DateFormat
 import android.util.AttributeSet
@@ -17,25 +21,26 @@ import android.widget.TextClock
 import android.widget.TextView
 import com.example.tvlauncher.R
 import com.example.tvlauncher.util.dpToPx
-import com.example.tvlauncher.util.getWifiSignalLevel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * 顶部状态栏 — 显示投影仪图标、WiFi 信号强度、时间、星期和日期
+ * 顶部状态栏 — 显示投影仪图标、WiFi/蓝牙/HDMI 连接状态、时间、星期和日期
  *
- * 结构：水平 LinearLayout，投影仪图标固定左侧，weight 弹簧分隔 WiFi（中偏右）和时间组（右）
+ * 结构：水平 LinearLayout，投影仪图标固定左侧，weight 弹簧分隔连接图标组（中偏右）和时间组（右）
  *   - 投影仪图标（36dp，#E6E6E6）
  *   - 弹性占位 View（weight=1）
  *   - WiFi 图标（40dp，#E6E6E6）
+ *   - 蓝牙图标（40dp，#E6E6E6）
+ *   - HDMI 图标（40dp，#E6E6E6）
  *   - 弹性占位 View（weight=0.5）
  *   - 时间 TextClock（24sp，白色，自动 12/24 小时制）
  *   - 星期文字（16sp，100%白色）
  *   - 日期文字（16sp，100%白色）
  *
- * 通过广播监听时间变化（ACTION_TIME_TICK）、WiFi 信号变化（RSSI_CHANGED_ACTION）
- * 和网络连接状态变化（NETWORK_STATE_CHANGED_ACTION）
+ * 通过广播监听时间变化（ACTION_TIME_TICK）、网络连接状态变化（NETWORK_STATE_CHANGED_ACTION）、
+ * 蓝牙连接状态变化（ACTION_ACL_CONNECTED/ACTION_ACL_DISCONNECTED）和 HDMI 插拔广播（ACTION_HDMI_PLUGGED）
  */
 class StatusBarView @JvmOverloads constructor(
     context: Context,
@@ -44,22 +49,34 @@ class StatusBarView @JvmOverloads constructor(
 ) : LinearLayout(context, attrs, defStyleAttr) {
 
     private val wifiIcon: ImageView
+    private val bluetoothIcon: ImageView
+    private val hdmiIcon: ImageView
     private val dateText: TextView
     private val weekdayText: TextView
     private val timeText: TextClock
     private val connectivityManager: ConnectivityManager
     private var receiverRegistered = false
 
-    /** 接收时间变化、WiFi信号变化和网络状态变化的广播 */
+    private val bluetoothManager: BluetoothManager?
+    private val bluetoothAdapter: BluetoothAdapter?
+
+    /** 接收时间变化、WiFi/蓝牙/HDMI 连接状态变化的广播 */
     private val tickReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 Intent.ACTION_TIME_TICK -> {
                     updateDateAndWeekday()
                 }
-                WifiManager.RSSI_CHANGED_ACTION,
                 WifiManager.NETWORK_STATE_CHANGED_ACTION -> {
                     updateWifi()
+                }
+                BluetoothDevice.ACTION_ACL_CONNECTED,
+                BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                    updateBluetooth()
+                }
+                "android.intent.action.HDMI_PLUGGED" -> {
+                    val state = intent.getBooleanExtra("state", false)
+                    updateHdmi(state)
                 }
             }
         }
@@ -68,6 +85,10 @@ class StatusBarView @JvmOverloads constructor(
     init {
         connectivityManager = context.applicationContext
             .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+        bluetoothManager = context.applicationContext
+            .getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        bluetoothAdapter = bluetoothManager?.adapter
 
         orientation = HORIZONTAL
         gravity = Gravity.BOTTOM
@@ -81,36 +102,60 @@ class StatusBarView @JvmOverloads constructor(
             }
         })
 
-        // ─── 弹性占位（左侧）— 把 WiFi 推到中间偏右 ───
+        // ─── 弹性占位（左侧）— 把连接图标组推到中间偏右 ───
         addView(android.view.View(context).apply {
             layoutParams = LayoutParams(0, 0, 1f)
         })
 
-        // ─── WiFi 图标 40x40dp，居中靠右，默认隐藏 ───
+        // ─── WiFi 图标 36x28dp，居中靠右，默认隐藏 ───
         wifiIcon = ImageView(context).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
             setColorFilter(Color.parseColor("#E6E6E6"))
             visibility = GONE
-            layoutParams = LayoutParams(context.dpToPx(40), context.dpToPx(40)).apply {
-                gravity = Gravity.BOTTOM or Gravity.CENTER_VERTICAL
+            layoutParams = LayoutParams(context.dpToPx(36), context.dpToPx(28)).apply {
+                gravity = Gravity.CENTER_VERTICAL
                 leftMargin = context.dpToPx(48)
             }
         }
         addView(wifiIcon)
+
+        // ─── 蓝牙图标 40x40dp，默认隐藏 ───
+        bluetoothIcon = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setColorFilter(Color.parseColor("#E6E6E6"))
+            visibility = GONE
+            layoutParams = LayoutParams(context.dpToPx(40), context.dpToPx(40)).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                leftMargin = context.dpToPx(12)
+            }
+        }
+        addView(bluetoothIcon)
+
+        // ─── HDMI 图标 44x44dp，默认隐藏 ───
+        hdmiIcon = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setColorFilter(Color.parseColor("#E6E6E6"))
+            visibility = GONE
+            layoutParams = LayoutParams(context.dpToPx(44), context.dpToPx(44)).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                leftMargin = context.dpToPx(12)
+            }
+        }
+        addView(hdmiIcon)
 
         // ─── 弹性占位（右侧）— 把时间组推右 ───
         addView(android.view.View(context).apply {
             layoutParams = LayoutParams(0, 0, 0.5f)
         })
 
-        // ─── 时间 + 星期 + 日期（水平排列，底部基线对齐）───
+        // ─── 时间 + 星期 + 日期（水平排列，垂直居中）───
         val timeGroup = LinearLayout(context).apply {
             orientation = HORIZONTAL
-            gravity = Gravity.BOTTOM
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = LayoutParams(
                 LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = Gravity.BOTTOM
+                gravity = Gravity.CENTER_VERTICAL
             }
         }
 
@@ -120,7 +165,7 @@ class StatusBarView @JvmOverloads constructor(
             format24Hour = "HH:mm"
             setTextColor(Color.WHITE)
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 24f)
-            gravity = Gravity.BOTTOM
+            gravity = Gravity.CENTER_VERTICAL
         }
         timeGroup.addView(timeText)
 
@@ -128,7 +173,7 @@ class StatusBarView @JvmOverloads constructor(
         weekdayText = TextView(context).apply {
             setTextColor(Color.parseColor("#FFFFFF"))
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
-            gravity = Gravity.BOTTOM
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = LayoutParams(
                 LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
             ).apply { leftMargin = context.dpToPx(16) }
@@ -139,7 +184,7 @@ class StatusBarView @JvmOverloads constructor(
         dateText = TextView(context).apply {
             setTextColor(Color.parseColor("#FFFFFF"))
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
-            gravity = Gravity.BOTTOM
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = LayoutParams(
                 LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
             ).apply { leftMargin = context.dpToPx(16) }
@@ -149,14 +194,18 @@ class StatusBarView @JvmOverloads constructor(
         addView(timeGroup)
     }
 
-    /** 注册广播接收器，开始更新时间和WiFi */
+    /** 注册广播接收器，开始更新时间和连接状态 */
     fun startListening() {
         updateDateAndWeekday()
         updateWifi()
+        updateBluetooth()
+        updateHdmi()
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_TIME_TICK)
-            addAction(WifiManager.RSSI_CHANGED_ACTION)
             addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            addAction("android.intent.action.HDMI_PLUGGED")
         }
         context.registerReceiver(tickReceiver, filter)
         receiverRegistered = true
@@ -185,7 +234,7 @@ class StatusBarView @JvmOverloads constructor(
      * 更新 WiFi 图标
      * 通过 ConnectivityManager 判断当前活跃网络是否为 WiFi，
      * 规避 H313 主板对 WifiInfo.networkId 的净化返回
-     * - 已连接 WiFi 且为活跃网络：显示对应信号等级的图标
+     * - 已连接 WiFi 且为活跃网络：点亮满格图标
      * - 未连接或活跃网络非 WiFi：隐藏图标（GONE）
      */
     private fun updateWifi() {
@@ -197,16 +246,50 @@ class StatusBarView @JvmOverloads constructor(
             return
         }
 
-        val level = context.getWifiSignalLevel()
-        wifiIcon.setImageResource(
-            when (level) {
-                0 -> R.drawable.ic_wifi_0
-                1 -> R.drawable.ic_wifi_1
-                2 -> R.drawable.ic_wifi_2
-                3 -> R.drawable.ic_wifi_3
-                else -> R.drawable.ic_wifi_4
-            }
-        )
+        wifiIcon.setImageResource(R.drawable.ic_wifi_4)
         wifiIcon.visibility = VISIBLE
     }
+
+    /** 更新蓝牙图标 — 有已连接的蓝牙 Profile 时点亮，否则隐藏 */
+    private fun updateBluetooth() {
+        if (bluetoothAdapter == null) {
+            bluetoothIcon.visibility = GONE
+            return
+        }
+        val profiles = intArrayOf(
+            BluetoothProfile.A2DP,
+            BluetoothProfile.HEADSET,
+            BluetoothProfile.GATT
+        )
+        for (p in profiles) {
+            @Suppress("DEPRECATION")
+            val connected = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                    bluetoothAdapter.getProfileConnectionState(p) == BluetoothProfile.STATE_CONNECTED
+            } else {
+                bluetoothAdapter.getProfileConnectionState(p) == BluetoothProfile.STATE_CONNECTED
+            }
+            if (connected) {
+                bluetoothIcon.setImageResource(R.drawable.ic_bluetooth)
+                bluetoothIcon.visibility = VISIBLE
+                return
+            }
+        }
+        bluetoothIcon.visibility = GONE
+    }
+
+    /**
+     * 更新 HDMI 图标 — 收到 HDMI 插拔广播时点亮或隐藏。
+     * 启动时无法主动查询 HDMI 状态，因此默认隐藏，等待广播。
+     */
+    private fun updateHdmi(state: Boolean = false) {
+        if (state) {
+            hdmiIcon.setImageResource(R.drawable.ic_hdmi)
+            hdmiIcon.visibility = VISIBLE
+        } else {
+            hdmiIcon.visibility = GONE
+        }
+    }
 }
+
