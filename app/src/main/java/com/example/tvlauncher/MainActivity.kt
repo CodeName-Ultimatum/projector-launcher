@@ -225,10 +225,12 @@ class MainActivity : AppCompatActivity() {
                 quickBarDirty = true
             }
             // 两排正方形格子的高度即面板高度,动态调整 panel_container 高度
+            // 需加上容器自身上下 padding,否则内容区比两排矮,聚焦下排时 RecyclerView 会滑动对齐
             onPanelHeight = { heightPx ->
                 val lp = panelContainer.layoutParams
-                if (lp.height != heightPx) {
-                    lp.height = heightPx
+                val totalHeight = heightPx + panelContainer.paddingTop + panelContainer.paddingBottom
+                if (lp.height != totalHeight) {
+                    lp.height = totalHeight
                     panelContainer.layoutParams = lp
                 }
                 // 面板高度变化后同步阴影位置
