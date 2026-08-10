@@ -93,10 +93,10 @@ class StatusBarView @JvmOverloads constructor(
         orientation = HORIZONTAL
         gravity = Gravity.BOTTOM
 
-        // ─── 投影仪图标 32x32dp，左上角固定 ───
+        // ─── 科技感图标 32x32dp，左上角固定 ───
         addView(ImageView(context).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
-            setImageResource(R.drawable.ic_projector)
+            setImageResource(R.drawable.ic_projector_sci)
             layoutParams = LayoutParams(context.dpToPx(44), context.dpToPx(41)).apply {
                 gravity = Gravity.CENTER_VERTICAL
             }

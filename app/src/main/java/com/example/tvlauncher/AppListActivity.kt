@@ -109,10 +109,13 @@ class AppListActivity : AppCompatActivity() {
             clipToPadding = false
             // 左边距 36dp 对齐主界面安全边距(防过扫描),右侧保留小边距
             setPadding(dpToPx(36), dpToPx(12), dpToPx(12), dpToPx(12))
-            layoutParams = ViewGroup.LayoutParams(
+            layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            ).apply {
+                // 整体水平居中(gridContent 是 MATCH_PARENT 宽),行内按钮仍靠左排列
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
         }
         gridContent.addView(panel)
 
@@ -147,7 +150,7 @@ class AppListActivity : AppCompatActivity() {
                 row = createRow()
                 panel.addView(row)
             }
-            val item = createAppItem(app)
+            val item = createAppItem(app, row!!)
             if (indexInRow > 0) {
                 val lp = item.layoutParams as LinearLayout.LayoutParams
                 lp.leftMargin = gap
@@ -180,7 +183,7 @@ class AppListActivity : AppCompatActivity() {
     }
 
     /** 创建单个 110dp 正方形应用框 */
-    private fun createAppItem(app: AppRepository.AppInfo): View {
+    private fun createAppItem(app: AppRepository.AppInfo, row: LinearLayout): View {
         val item = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -246,11 +249,16 @@ class AppListActivity : AppCompatActivity() {
             if (hasFocus) {
                 item.animate().scaleX(1.1f).scaleY(1.1f).setDuration(150).start()
                 item.background = focusedBg
-                item.elevation = dpToPx(12).toFloat()
+                // 抬高 item elevation 盖过同行相邻图标,并抬升整行盖过其它行,阴影不被相邻格子遮挡
+                item.elevation = dpToPx(20).toFloat()
+                for (i in 0 until panel.childCount) {
+                    panel.getChildAt(i).elevation = if (panel.getChildAt(i) === row) dpToPx(20).toFloat() else 0f
+                }
             } else {
                 item.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
                 item.background = normalBg
                 item.elevation = 0f
+                row.elevation = 0f
             }
         }
 

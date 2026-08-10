@@ -31,6 +31,7 @@ import com.example.tvlauncher.ui.StatusBarView
 import com.example.tvlauncher.util.BackgroundCutter
 import com.example.tvlauncher.util.dpToPx
 import com.example.tvlauncher.util.showDarkToast
+import com.bumptech.glide.Glide
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -524,10 +525,19 @@ class MainActivity : AppCompatActivity() {
                 // 已连接 WiFi 且 data.json 解析成功 → 联网模式
                 val networkMode = isWifiConnected() && launcherData != null
 
-                // 离线模式才裁剪本地背景图
+                // 离线模式：先尝试从快照恢复上次联网内容（9 张卡缓存全部命中才用）
+                val snapshotData = if (!networkMode) {
+                    withContext(Dispatchers.IO) { cardDataSource.loadLauncherDataSnapshot() }
+                } else null
+                // 9 张卡的 URL 全部能从 Glide 磁盘缓存取出才返回 true，否则 null
+                val cachedApps: List<GroupApp?>? = if (snapshotData != null) {
+                    withContext(Dispatchers.IO) { loadCachedCardApps(snapshotData) }
+                } else null
+
+                // 离线且缓存不齐 → 裁剪本地背景图兜底
                 val cutter = withContext(Dispatchers.IO) {
-                    if (networkMode) {
-                        null  // 联网模式不裁剪本地背景图
+                    if (networkMode || cachedApps != null) {
+                        null  // 联网或已从缓存恢复，不裁剪本地背景图
                     } else {
                         try {
                             val src = BitmapFactory.decodeResource(resources, R.drawable.bg_full)
@@ -544,8 +554,11 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 withContext(Dispatchers.Main) {
-                    // 离线模式：本地背景图块
-                    if (cutter != null) {
+                    // 离线且缓存齐全：恢复上次联网的卡片内容
+                    if (cachedApps != null) {
+                        bindCachedCards(cachedApps)
+                    } else if (cutter != null) {
+                        // 离线兜底：本地背景图块
                         backgroundCutter = cutter
                         // IVI面板背景（图块0）
                         iviCard.setCardBackground(cutter.getTile(0))
@@ -566,6 +579,64 @@ class MainActivity : AppCompatActivity() {
                     // 设置D-pad焦点导航
                     setupFocusNavigation()
                 }
+            }
+        }
+    }
+
+    /**
+     * 从快照提取 9 个卡槽应用，同步探测 Glide 磁盘缓存。
+     * 全部命中返回 9 元素列表（无图槽位为 null）；任一缺失返回 null（触发整片退回 bg_full）。
+     * 必须在 IO 线程调用（Glide submit().get() 阻塞）。
+     */
+    private fun loadCachedCardApps(data: LauncherData): List<GroupApp?>? {
+        val apps = data.modules
+            .sortedBy { it.sort }
+            .flatMap { m -> m.productGroups.sortedBy { it.sort }.flatMap { it.groupApps } }
+            .filter { it.packageName != null || it.iconBgUrl != null || it.resolveIntent() != null }
+
+        val slots = (0 until 9).map { apps.getOrNull(it) }
+        // 无有效应用则无缓存可恢复，退回 bg_full
+        if (slots.all { it == null }) return null
+
+        for (app in slots) {
+            val url = app?.iconBgUrl ?: app?.iconUrl ?: continue  // 无图槽位跳过
+            val hit = try {
+                Glide.with(this)
+                    .asFile()
+                    .load(url)
+                    .onlyRetrieveFromCache(true)
+                    .submit()
+                    .get()
+                true
+            } catch (e: Exception) {
+                false
+            }
+            if (!hit) return null  // 任一缺失 → 全有或全无，整片退回
+        }
+        return slots
+    }
+
+    /**
+     * 离线模式：用快照应用绑定 9 张卡（仅从 Glide 缓存取图，不走网络）。
+     * cachedApps 来自 loadCachedCardApps，已确认所有有图槽位缓存命中。
+     */
+    private fun bindCachedCards(cachedApps: List<GroupApp?>) {
+        val targets = listOf(iviCard) + cardViews
+        targets.forEachIndexed { idx, card ->
+            val app = cachedApps.getOrNull(idx) ?: return@forEachIndexed
+            // 仅从缓存加载（缓存已确认存在）
+            val imageUrl = app.iconBgUrl ?: app.iconUrl
+            imageUrl?.let { card.setCardImageUrlFromCache(it) }
+            // 点击行为与联网一致
+            val launchPkg = resolveLaunchPackage(app)
+            card.onCardClicked = if (launchPkg != null) {
+                {
+                    val intent = packageManager.getLaunchIntentForPackage(launchPkg)
+                    if (intent != null) startActivity(intent)
+                    else showDarkToast("应用无法启动")
+                }
+            } else {
+                { showDarkToast(R.string.not_configured) }
             }
         }
     }

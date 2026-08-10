@@ -140,4 +140,27 @@ class LauncherCardView @JvmOverloads constructor(
                 }
             })
     }
+
+    /**
+     * 仅从 Glide 磁盘缓存加载整卡图片（不发起网络请求）。
+     * 供离线模式恢复上次联网内容使用；调用前需确认缓存存在，否则显示空白。
+     */
+    fun setCardImageUrlFromCache(url: String) {
+        Glide.with(context)
+            .load(url)
+            .onlyRetrieveFromCache(true)
+            .centerCrop()
+            .into(object : com.bumptech.glide.request.target.CustomTarget<android.graphics.drawable.Drawable>() {
+                override fun onResourceReady(
+                    resource: android.graphics.drawable.Drawable,
+                    transition: com.bumptech.glide.request.transition.Transition<in android.graphics.drawable.Drawable>?
+                ) {
+                    contentView.background = resource
+                }
+
+                override fun onLoadCleared(placeholder: android.graphics.drawable.Drawable?) {
+                    // 不清空现有背景
+                }
+            })
+    }
 }
