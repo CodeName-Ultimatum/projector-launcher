@@ -14,3 +14,10 @@ app/src/test/
 # 设备测试数据与验证截图(不提交,仅根目录)
 /data/
 /screenshots/
+
+# 签名密钥(绝不提交)
+/H313签名/
+*.keystore
+*.pk8
+*.pkcs12
+*.x509.pem
