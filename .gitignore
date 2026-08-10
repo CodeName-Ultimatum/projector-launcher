@@ -21,3 +21,7 @@ app/src/test/
 *.pk8
 *.pkcs12
 *.x509.pem
+
+# 内部文档(迁往私有仓 projector-launcher-docs,公开仓不跟踪)
+/docs/
+错误总结.md
