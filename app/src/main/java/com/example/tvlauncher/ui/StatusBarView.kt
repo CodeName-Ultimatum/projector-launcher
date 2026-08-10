@@ -49,6 +49,7 @@ class StatusBarView @JvmOverloads constructor(
 ) : LinearLayout(context, attrs, defStyleAttr) {
 
     private val wifiIcon: ImageView
+    private val ethernetIcon: ImageView
     private val bluetoothIcon: ImageView
     private val hdmiIcon: ImageView
     private val dateText: TextView
@@ -56,6 +57,22 @@ class StatusBarView @JvmOverloads constructor(
     private val timeText: TextClock
     private val connectivityManager: ConnectivityManager
     private var receiverRegistered = false
+
+    /** 以太网插拔无专用广播，用网络能力回调监听。回调在 ConnectivityThread，UI 更新须切回主线程 */
+    private val ethernetCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: android.net.Network) {
+            post { updateNetworkIcons() }
+        }
+        override fun onLost(network: android.net.Network) {
+            post { updateNetworkIcons() }
+        }
+        override fun onCapabilitiesChanged(
+            network: android.net.Network,
+            caps: NetworkCapabilities
+        ) {
+            post { updateNetworkIcons() }
+        }
+    }
 
     private val bluetoothManager: BluetoothManager?
     private val bluetoothAdapter: BluetoothAdapter?
@@ -68,7 +85,7 @@ class StatusBarView @JvmOverloads constructor(
                     updateDateAndWeekday()
                 }
                 WifiManager.NETWORK_STATE_CHANGED_ACTION -> {
-                    updateWifi()
+                    updateNetworkIcons()
                 }
                 BluetoothDevice.ACTION_ACL_CONNECTED,
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
@@ -107,18 +124,6 @@ class StatusBarView @JvmOverloads constructor(
             layoutParams = LayoutParams(0, 0, 1f)
         })
 
-        // ─── WiFi 图标 36x28dp，居中靠右，默认隐藏 ───
-        wifiIcon = ImageView(context).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            setColorFilter(Color.parseColor("#E6E6E6"))
-            visibility = GONE
-            layoutParams = LayoutParams(context.dpToPx(36), context.dpToPx(28)).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                leftMargin = context.dpToPx(48)
-            }
-        }
-        addView(wifiIcon)
-
         // ─── 蓝牙图标 40x40dp，默认隐藏 ───
         bluetoothIcon = ImageView(context).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -142,6 +147,30 @@ class StatusBarView @JvmOverloads constructor(
             }
         }
         addView(hdmiIcon)
+
+        // ─── WiFi 图标 36x28dp，默认隐藏；与以太网互斥，同在 HDMI 右侧槽位 ───
+        wifiIcon = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setColorFilter(Color.parseColor("#E6E6E6"))
+            visibility = GONE
+            layoutParams = LayoutParams(context.dpToPx(36), context.dpToPx(28)).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                leftMargin = context.dpToPx(12)
+            }
+        }
+        addView(wifiIcon)
+
+        // ─── 以太网图标 28x28dp，默认隐藏；插上网线点亮，与 WiFi 互斥同槽位 ───
+        ethernetIcon = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setColorFilter(Color.parseColor("#E6E6E6"))
+            visibility = GONE
+            layoutParams = LayoutParams(context.dpToPx(28), context.dpToPx(28)).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                leftMargin = context.dpToPx(12)
+            }
+        }
+        addView(ethernetIcon)
 
         // ─── 弹性占位（右侧）— 把时间组推右 ───
         addView(android.view.View(context).apply {
@@ -197,7 +226,7 @@ class StatusBarView @JvmOverloads constructor(
     /** 注册广播接收器，开始更新时间和连接状态 */
     fun startListening() {
         updateDateAndWeekday()
-        updateWifi()
+        updateNetworkIcons()
         updateBluetooth()
         updateHdmi()
         val filter = IntentFilter().apply {
@@ -209,6 +238,12 @@ class StatusBarView @JvmOverloads constructor(
         }
         context.registerReceiver(tickReceiver, filter)
         receiverRegistered = true
+        // 以太网插拔监听
+        try {
+            connectivityManager.registerDefaultNetworkCallback(ethernetCallback)
+        } catch (e: Exception) {
+            // 注册失败则仅保留启动时的一次性状态
+        }
     }
 
     /** 注销广播接收器，停止更新 */
@@ -220,6 +255,11 @@ class StatusBarView @JvmOverloads constructor(
                 // 已被注销则忽略
             }
             receiverRegistered = false
+        }
+        try {
+            connectivityManager.unregisterNetworkCallback(ethernetCallback)
+        } catch (e: Exception) {
+            // 未注册则忽略
         }
     }
 
@@ -248,6 +288,32 @@ class StatusBarView @JvmOverloads constructor(
 
         wifiIcon.setImageResource(R.drawable.ic_wifi_4)
         wifiIcon.visibility = VISIBLE
+    }
+
+    /**
+     * 更新以太网图标 — 当前活跃网络为以太网(插了网线)时点亮，否则隐藏。
+     * 与 WiFi 互斥：同一时刻活跃网络只有一种传输类型。
+     */
+    private fun updateEthernet() {
+        val activeNetwork = connectivityManager.activeNetwork ?: return run { ethernetIcon.visibility = GONE }
+        val caps = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return run { ethernetIcon.visibility = GONE }
+
+        if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
+            ethernetIcon.visibility = GONE
+            return
+        }
+
+        ethernetIcon.setImageResource(R.drawable.ic_ethernet)
+        ethernetIcon.visibility = VISIBLE
+    }
+
+    /**
+     * 网络图标统一刷新 — WiFi 与以太网互斥，同一时刻只显示活跃网络对应的那个。
+     * 任何网络变化(广播或 NetworkCallback)都同时刷新两者，避免一方状态残留导致双图标同显。
+     */
+    private fun updateNetworkIcons() {
+        updateWifi()
+        updateEthernet()
     }
 
     /** 更新蓝牙图标 — 有已连接的蓝牙 Profile 时点亮，否则隐藏 */

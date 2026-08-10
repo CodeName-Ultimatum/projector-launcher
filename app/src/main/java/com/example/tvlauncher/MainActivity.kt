@@ -19,6 +19,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.tvlauncher.data.AppRepository
 import com.example.tvlauncher.data.CardConfig
+import com.example.tvlauncher.data.ApiCardDataSource
 import com.example.tvlauncher.data.CardDataSource
 import com.example.tvlauncher.data.FileCardDataSource
 import com.example.tvlauncher.data.GroupApp
@@ -107,6 +108,8 @@ class MainActivity : AppCompatActivity() {
     // ─── 常量 ─────────────────────────────────────────────────────
 
     companion object {
+        /** 后端 data.json 接口地址（GET）。返回结构须与 data.json 一致 */
+        private const val CARD_API_URL = "http://192.168.2.156:4523/m1/8695853-8480549-default/data.json"
     }
 
     // ─── 生命周期 ───────────────────────────────────────────────
@@ -120,7 +123,8 @@ class MainActivity : AppCompatActivity() {
 
         appRepo = AppRepository(this)
         quickStore = QuickAppsStore(this)
-        cardDataSource = FileCardDataSource(this)
+        // TODO: 替换为真实后端 API 地址（GET，返回与 data.json 相同结构的 JSON）
+        cardDataSource = ApiCardDataSource(this, CARD_API_URL)
 
         sheet = findViewById<View>(R.id.sheet)
         rowTop = findViewById(R.id.row_top)
@@ -519,11 +523,13 @@ class MainActivity : AppCompatActivity() {
 
             lifecycleScope.launch {
                 // 读取 data/data.json 并解析（IO 线程,readText 阻塞）
-                val launcherData = withContext(Dispatchers.IO) {
+                val rawData = withContext(Dispatchers.IO) {
                     cardDataSource.loadLauncherData()
                 }
-                // 已连接 WiFi 且 data.json 解析成功 → 联网模式
-                val networkMode = isWifiConnected() && launcherData != null
+                // 解析成功但无任何有效卡片(如返回 {}) → 视为无数据,走离线兜底
+                val launcherData = rawData?.takeIf { hasBindableApps(it) }
+                // 已联网(WiFi/以太网) 且 data.json 解析成功且有有效卡片 → 联网模式
+                val networkMode = isNetworkConnected() && launcherData != null
 
                 // 离线模式：先尝试从快照恢复上次联网内容（9 张卡缓存全部命中才用）
                 val snapshotData = if (!networkMode) {
@@ -641,12 +647,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 判断当前是否有可用的 WiFi 网络连接 */
-    private fun isWifiConnected(): Boolean {
+    /** 提取 data.json 中可绑定的有效卡片（与 bindCardsFromLauncherData 同一过滤规则） */
+    private fun extractBindableApps(data: LauncherData): List<GroupApp> {
+        return data.modules
+            .sortedBy { it.sort }
+            .flatMap { m -> m.productGroups.sortedBy { it.sort }.flatMap { it.groupApps } }
+            .filter { it.packageName != null || it.iconBgUrl != null || it.resolveIntent() != null }
+    }
+
+    /** 数据中是否至少有一张可绑定的卡片；空内容(如 {}) 返回 false */
+    private fun hasBindableApps(data: LauncherData): Boolean {
+        return extractBindableApps(data).isNotEmpty()
+    }
+
+    /** 判断当前是否有可用网络（WiFi 或以太网任一即视为联网） */
+    private fun isNetworkConnected(): Boolean {
         val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = cm.activeNetwork ?: return false
         val caps = cm.getNetworkCapabilities(network) ?: return false
-        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
     }
 
     /**
@@ -655,11 +675,7 @@ class MainActivity : AppCompatActivity() {
      * data.json 的 groupApps 扁平化为按 sort 排列的列表，前 9 个依次绑定。
      */
     private fun bindCardsFromLauncherData(data: LauncherData) {
-        // 按模块→组→组内顺序扁平化 groupApps（组间按 sort 连续,组内保留 data.json 顺序）
-        val apps = data.modules
-            .sortedBy { it.sort }
-            .flatMap { m -> m.productGroups.sortedBy { it.sort }.flatMap { it.groupApps } }
-            .filter { it.packageName != null || it.iconBgUrl != null || it.resolveIntent() != null }
+        val apps = extractBindableApps(data)
 
         val targets = listOf(iviCard) + cardViews  // 9 个卡槽
         targets.forEachIndexed { idx, card ->

@@ -26,3 +26,7 @@ app/src/test/
 # 内部文档(迁往私有仓 projector-launcher-docs,公开仓不跟踪)
 /docs/
 错误总结.md
+
+# 本地测试与设计源文件(不提交)
+/test-data*.json
+*.svg
