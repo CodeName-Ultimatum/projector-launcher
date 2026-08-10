@@ -33,8 +33,14 @@ class AppPanelView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
-    /** 目标格子尺寸(dp):自适应列数使每格尽量接近此宽度 */
-    private val targetCellSize = 108
+    /** 固定列数:格子宽度自适应屏幕,聚焦放大后白框恰好贴到屏幕边缘 */
+    private val spanCount = 8
+
+    /** 聚焦放大比例(与 setFocusZoom 一致) */
+    private val focusScale = 1.06f
+
+    /** 聚焦白框描边宽度(dp) */
+    private val focusStrokeDp = 2
 
     /** 面板展开时的勾选回调,参数为(包名, 是否已加入常用栏) */
     var onToggle: ((String, Boolean) -> Unit)? = null
@@ -46,21 +52,15 @@ class AppPanelView @JvmOverloads constructor(
     private var apps = listOf<AppRepository.AppInfo>()
     private val addedPackages = mutableSetOf<String>()
     private lateinit var recyclerView: RecyclerView
-    private var currentSpanCount = 6
 
     /** 稳定的格子边长(px):布局确定后在监听里缓存,onCreateViewHolder 复用,避免每次 parent.width 现算导致抖动 */
     private var cellSizePx = 0
 
-    /** 面板展开时的上下边缘阴影带(展开显示,收起隐藏) */
-    private var shadowTop: View? = null
-    private var shadowBottom: View? = null
-
     init {
-        // 用屏幕宽度预计算初始列数/格宽,确保 onCreateViewHolder 先于布局监听触发时也有正确尺寸
+        // 用屏幕宽度预计算初始格宽,确保 onCreateViewHolder 先于布局监听触发时也有正确尺寸
+        // 格宽 = 可用宽/列数,再预扣聚焦放大时白框溢出量,使聚焦后白框恰好贴到屏幕边缘
         val screenW = context.resources.displayMetrics.widthPixels
-        val screenWDp = screenW / context.resources.displayMetrics.density
-        currentSpanCount = (screenWDp / targetCellSize).toInt().coerceAtLeast(1)
-        cellSizePx = Math.round(screenW.toFloat() / currentSpanCount)
+        cellSizePx = computeCellSize(screenW)
 
         // 面板自身不获焦,焦点给格子;收起时阻止子项获焦
         isFocusable = false
@@ -72,7 +72,7 @@ class AppPanelView @JvmOverloads constructor(
         clipToPadding = false
 
         recyclerView = RecyclerView(context).apply {
-            layoutManager = object : GridLayoutManager(context, currentSpanCount, RecyclerView.VERTICAL, false) {
+            layoutManager = object : GridLayoutManager(context, spanCount, RecyclerView.VERTICAL, false) {
                 // 焦点移动时即时跳转到目标行,不做平滑滚动(与卡片区的即时焦点切换一致,避免按键延迟感)
                 override fun smoothScrollToPosition(recyclerView: RecyclerView, state: RecyclerView.State, position: Int) {
                     scrollToPosition(position)
@@ -92,19 +92,13 @@ class AppPanelView @JvmOverloads constructor(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            // 宽度确定后自适应列数:目标格宽 targetCellSize,格子=可用宽/列数(正方形)
+            // 宽度确定后重算格宽:预扣聚焦放大时白框溢出量,使聚焦后白框恰好贴到屏幕边缘
             addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
                 val widthPx = r - l
                 if (widthPx <= 0) return@addOnLayoutChangeListener
-                val widthDp = widthPx / resources.displayMetrics.density
-                val span = (widthDp / targetCellSize).toInt().coerceAtLeast(1)
-                // 用 Math.round 避免整数除法截断,格宽 = 可用宽/列数(正方形)
-                val cellPx = Math.round(widthPx.toFloat() / span)
-                val changed = span != currentSpanCount || cellPx != cellSizePx
-                currentSpanCount = span
-                cellSizePx = cellPx
-                if (changed) {
-                    (layoutManager as GridLayoutManager).spanCount = span
+                val cellPx = computeCellSize(widthPx)
+                if (cellPx != cellSizePx) {
+                    cellSizePx = cellPx
                     adapter?.notifyDataSetChanged()
                 }
                 // 面板高度 = 两排正方形格子高度
@@ -112,50 +106,18 @@ class AppPanelView @JvmOverloads constructor(
             }
         }
         addView(recyclerView)
-
-        // 面板上下边缘阴影带:展开时显示,从面板边缘向外扩散,营造面板从底部浮出的层次感
-        shadowTop = createShadowBar(isTop = true)
-        shadowBottom = createShadowBar(isTop = false)
     }
 
     /**
-     * 创建一条阴影带 View 并添加到面板,阴影从面板边缘向面板内部渐隐
-     * @param isTop true=顶部阴影带(贴面板顶边,向下渐隐), false=底部阴影带(贴面板底边,向上渐隐)
+     * 根据可用宽度计算格宽:列数固定,格宽 = 可用宽/列数,再预扣聚焦放大时白框溢出量。
+     * 白框溢出量 = 格宽 × (focusScale-1)/2 + 描边宽,反解得:
+     * 格宽 = (可用宽 - 列数 × 2 × 描边) / (列数 × focusScale)
      */
-    private fun createShadowBar(isTop: Boolean): View {
-        val barHeight = context.dpToPx(4)
-        // 顶部阴影稍浓(受光面在上,边缘更清晰),底部阴影偏淡避免在深色底上过重
-        val colors = if (isTop) {
-            intArrayOf(
-                Color.parseColor("#66000000"),
-                Color.parseColor("#33000000"),
-                Color.TRANSPARENT
-            )
-        } else {
-            intArrayOf(
-                Color.parseColor("#40000000"),
-                Color.parseColor("#20000000"),
-                Color.TRANSPARENT
-            )
-        }
-        val bar = View(context).apply {
-            background = GradientDrawable(
-                if (isTop) GradientDrawable.Orientation.TOP_BOTTOM else GradientDrawable.Orientation.BOTTOM_TOP,
-                colors
-            )
-            visibility = View.INVISIBLE
-        }
-        val lp = LayoutParams(LayoutParams.MATCH_PARENT, barHeight).apply {
-            if (isTop) {
-                gravity = Gravity.TOP
-                topMargin = 0 // 贴面板顶边,阴影向面板内部渐隐
-            } else {
-                gravity = Gravity.BOTTOM
-                bottomMargin = 0 // 贴面板底边,阴影向面板内部渐隐
-            }
-        }
-        addView(bar, lp)
-        return bar
+    private fun computeCellSize(availableWidthPx: Int): Int {
+        val strokePx = context.dpToPx(focusStrokeDp)
+        return Math.round(
+            (availableWidthPx - spanCount * 2f * strokePx) / (spanCount * focusScale)
+        )
     }
 
     fun bind(store: QuickAppsStore) {
@@ -183,28 +145,13 @@ class AppPanelView @JvmOverloads constructor(
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             recyclerView.isFocusable = true
             recyclerView.isEnabled = true
-            // 底部阴影带随展开动画一起画出;顶部阴影带由 MainActivity 在完全展开后显示
-            shadowTop?.visibility = View.INVISIBLE
-            shadowBottom?.visibility = View.VISIBLE
         } else {
             descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             // 禁用 RecyclerView 使收起态格子不可聚焦,不拦截卡片区/快捷栏的 D-pad 导航
             recyclerView.isEnabled = false
             recyclerView.isFocusable = false
             recyclerView.clearFocus()
-            // 顶部阴影立即隐藏;底部阴影保持显示,直到收起动画结束由 MainActivity 隐藏(否则下滑动画开头就消失)
-            shadowTop?.visibility = View.INVISIBLE
         }
-    }
-
-    /** 控制底部阴影带显示(收起动画结束后调用) */
-    fun setBottomShadowVisible(visible: Boolean) {
-        shadowBottom?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
-    }
-
-    /** 控制顶部阴影带显示(完全展开后调用) */
-    fun setTopShadowVisible(visible: Boolean) {
-        shadowTop?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
     }
 
     /** 将焦点落到第一个应用格子上 */
@@ -236,9 +183,9 @@ class AppPanelView @JvmOverloads constructor(
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            // 格子为正方形,复用布局监听里缓存的稳定边长;未就绪时兜底用 RecyclerView 当前宽/列数
+            // 格子为正方形,复用布局监听里缓存的稳定边长;未就绪时兜底用屏幕宽/列数
             val cellWidth = if (cellSizePx > 0) cellSizePx
-                else Math.round(parent.width.toFloat() / currentSpanCount.coerceAtLeast(1))
+                else computeCellSize(parent.width)
             val cellHeight = cellWidth
             // 图标放大到格子宽的 70%
             val iconSize = (cellWidth * 0.7f).toInt()

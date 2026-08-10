@@ -82,6 +82,10 @@ class MainActivity : AppCompatActivity() {
     /** 应用面板容器(展开时抬升 elevation 盖过快捷栏,使面板底部阴影不被盖住) */
     private lateinit var panelContainer: View
 
+    /** 面板上下边缘阴影带(展开显示,收起隐藏),画在 panel_container 上不受内边距影响 */
+    private var shadowTop: View? = null
+    private var shadowBottom: View? = null
+
     /** 面板展开时覆盖卡片区的天蓝亮蒙版(营造面板凸起的光感) */
     private var panelGlow: View? = null
 
@@ -227,9 +231,18 @@ class MainActivity : AppCompatActivity() {
                     lp.height = heightPx
                     panelContainer.layoutParams = lp
                 }
+                // 面板高度变化后同步阴影位置
+                panelContainer.post { updateShadowPosition() }
             }
         }
         (panelContainer as android.widget.FrameLayout).addView(panelView)
+
+        // 面板上下边缘阴影带:加到根容器,贴面板外边缘,不受 panel_container 内边距影响
+        val rootContainer = findViewById<android.widget.FrameLayout>(android.R.id.content).getChildAt(0) as android.widget.FrameLayout
+        shadowTop = createPanelShadowBar(rootContainer, isTop = true)
+        shadowBottom = createPanelShadowBar(rootContainer, isTop = false)
+        // 初始布局完成后同步阴影位置
+        panelContainer.post { updateShadowPosition() }
 
         // 面板展开时覆盖卡片区的天蓝亮蒙版:加在内容根最顶层,盖住卡片区(含卡片)
         val contentRoot = window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content)
@@ -260,11 +273,59 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 创建面板阴影带:加到根容器,贴面板外边缘,不受 panel_container 内边距影响
+     * 阴影带位置由 updateShadowPosition() 在面板布局完成后同步
+     * @param isTop true=顶部阴影带(贴面板顶边,向下渐隐), false=底部阴影带(贴面板底边,向上渐隐)
+     */
+    private fun createPanelShadowBar(container: android.widget.FrameLayout, isTop: Boolean): View {
+        val barHeight = dpToPx(4)
+        val colors = if (isTop) {
+            intArrayOf(Color.parseColor("#66000000"), Color.parseColor("#33000000"), Color.TRANSPARENT)
+        } else {
+            intArrayOf(Color.parseColor("#40000000"), Color.parseColor("#20000000"), Color.TRANSPARENT)
+        }
+        val bar = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                if (isTop) android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM
+                else android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,
+                colors
+            )
+            visibility = View.INVISIBLE
+        }
+        val lp = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT, barHeight
+        ).apply {
+            gravity = android.view.Gravity.TOP
+        }
+        container.addView(bar, lp)
+        return bar
+    }
+
+    /** 同步阴影带位置到面板外边缘(面板高度/位置变化后调用) */
+    private fun updateShadowPosition() {
+        val top = panelContainer.top
+        val bottom = panelContainer.bottom
+        shadowTop?.let { bar ->
+            val lp = bar.layoutParams as android.widget.FrameLayout.LayoutParams
+            lp.topMargin = top
+            bar.layoutParams = lp
+        }
+        shadowBottom?.let { bar ->
+            val lp = bar.layoutParams as android.widget.FrameLayout.LayoutParams
+            lp.topMargin = bottom - dpToPx(4)
+            bar.layoutParams = lp
+        }
+    }
+
     /** 点击"+"后:卡片区和状态栏上移露出应用面板 */
     private fun expandPanel() {
         if (panelExpanded) return
         panelExpanded = true
         panelView.setExpanded(true)
+        // 底部阴影带随展开动画一起画出;顶部阴影带完全展开后显示
+        shadowBottom?.visibility = View.VISIBLE
+        shadowTop?.visibility = View.INVISIBLE
         // 屏蔽卡片区/状态栏/快捷栏的焦点,焦点只能停留在面板内,仅返回键能跳出
         setSheetFocusable(false)
         setQuickBarFocusable(false)
@@ -286,7 +347,7 @@ class MainActivity : AppCompatActivity() {
                 sheet.elevation = dpToPx(24).toFloat()
                 panelContainer.elevation = 0f
                 // 顶部阴影带完全展开后显示
-                panelView.setTopShadowVisible(true)
+                shadowTop?.visibility = View.VISIBLE
                 // 面板完全展开后才盖卡片区蒙版:只罩卡片区(屏幕顶部到面板顶边)
                 showPanelGlow()
             }
@@ -298,6 +359,8 @@ class MainActivity : AppCompatActivity() {
         if (!panelExpanded) return
         panelExpanded = false
         panelView.setExpanded(false)
+        // 顶部阴影立即隐藏;底部阴影保持显示,直到收起动画结束(否则下滑动画开头就消失)
+        shadowTop?.visibility = View.INVISIBLE
         // 降回 Z 轴,让卡片区(main_container)重新盖住面板;sheet 复位到默认层级
         panelContainer.elevation = 0f
         sheet.elevation = 0f
@@ -310,7 +373,7 @@ class MainActivity : AppCompatActivity() {
                 // 动画被中断(快速连按展开)时跳过:面板可能已被再次展开
                 if (panelExpanded) return@withEndAction
                 // 面板已被卡片区盖住,此时才隐藏底部阴影(动画期间保持显示)
-                panelView.setBottomShadowVisible(false)
+                shadowBottom?.visibility = View.INVISIBLE
                 // 恢复卡片区/状态栏/快捷栏焦点能力
                 setSheetFocusable(true)
                 setQuickBarFocusable(true)
