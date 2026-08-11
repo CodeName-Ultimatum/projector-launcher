@@ -30,6 +30,7 @@ class LauncherCardView @JvmOverloads constructor(
 
     private val contentView: FrameLayout
     private val borderView: View
+    private var overlayIconView: android.widget.ImageView? = null
 
     // 聚焦时卡片放大比例
     private val focusScale = 1.10f
@@ -121,6 +122,43 @@ class LauncherCardView @JvmOverloads constructor(
             gravity = Gravity.FILL
         }
         contentView.background = bgDrawable
+    }
+
+    /**
+     * 在背景图块上方叠加一个居中的透明图标（约 50% 卡片高度）。
+     * 用于保底模式下让功能卡（应用列表/设置/文件管理）在 bg_full 图块上可识别。
+     * 叠层位于背景之上、聚焦白框之下。
+     */
+    fun setCardOverlayIcon(resId: Int) {
+        val icon = overlayIconView ?: android.widget.ImageView(context).apply {
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            // 高度约 50% 卡片,宽度同比例(FIT_CENTER 保持纵横比);居中
+            val lp = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.CENTER }
+            layoutParams = lp
+            // 插入到 borderView 之下(borderView 是 contentView 最后一个子视图)
+            contentView.addView(this, contentView.childCount - 1)
+            overlayIconView = this
+        }
+        icon.setImageResource(resId)
+        // 卡片布局完成后,把图标高度定为卡片高度的 50%
+        contentView.post {
+            val target = (contentView.height * 0.5f).toInt()
+            if (target > 0 && icon.layoutParams.height != target) {
+                icon.layoutParams = icon.layoutParams.apply {
+                    width = target
+                    height = target
+                }
+            }
+        }
+    }
+
+    /** 移除叠加图标(联网数据到达、卡片显示真实内容时调用,避免图标盖在卡片图上) */
+    fun clearCardOverlayIcon() {
+        overlayIconView?.let { contentView.removeView(it) }
+        overlayIconView = null
     }
 
     /**

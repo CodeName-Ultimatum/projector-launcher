@@ -739,6 +739,11 @@ class MainActivity : AppCompatActivity() {
                                 cardViews[cardIdx].setCardBackground(cutter.getTile(i))
                             }
                         }
+                        // 下排 3 张功能卡(cardViews[5/6/7]=应用列表/设置/文件管理)叠加白色图标,
+                        // 让保底主页的功能卡可识别(否则只是无标识的背景图块)
+                        cardViews.getOrNull(5)?.setCardOverlayIcon(R.drawable.ic_app_list)
+                        cardViews.getOrNull(6)?.setCardOverlayIcon(R.drawable.ic_settings_card)
+                        cardViews.getOrNull(7)?.setCardOverlayIcon(R.drawable.ic_file_manager_card)
                     }
                     setupFocusNavigation()
                     hideSkeletonOverlay()  // 秒开:首屏不等网络
@@ -916,6 +921,8 @@ class MainActivity : AppCompatActivity() {
 
     /** 将单个应用绑定到卡片：图片（iconBgUrl 优先,回退 iconUrl） + 点击行为（packageName/intents） */
     private fun bindCard(card: LauncherCardView, app: GroupApp) {
+        // 联网数据到达,卡片显示真实内容,移除兜底时的叠加图标
+        card.clearCardOverlayIcon()
         // 图片：iconBgUrl(banner 大图)优先,缺失时回退 iconUrl(小图标)
         val imageUrl = app.iconBgUrl ?: app.iconUrl
         imageUrl?.let { card.setCardImageUrl(it) }
