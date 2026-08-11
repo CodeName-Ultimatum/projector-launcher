@@ -771,11 +771,34 @@ class MainActivity : AppCompatActivity() {
         if (outdated.isEmpty()) return
 
         val names = outdated.joinToString("\n") { it.appName ?: it.packageName ?: "" }
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("应用有更新")
-            .setMessage("以下应用有新版本：\n$names")
-            .setPositiveButton("知道了", null)
-            .show()
+        android.app.Dialog(this, R.style.DialogAppUpdateTheme).apply {
+            setContentView(R.layout.dialog_app_update)
+            window?.apply {
+                // 窗口默认不透明,透明背景无法穿透,会显示继承的主题深蓝。需设半透明格式。
+                setBackgroundDrawableResource(android.R.color.transparent)
+                setFormat(android.graphics.PixelFormat.TRANSLUCENT)
+            }
+            findViewById<android.widget.TextView>(R.id.dialog_message)?.text = "以下应用有新版本：\n$names"
+            findViewById<android.widget.Button>(R.id.btn_update)?.setOnClickListener {
+                // TODO: 更新逻辑暂未实现
+                dismiss()
+            }
+            findViewById<android.widget.Button>(R.id.btn_ignore)?.setOnClickListener { dismiss() }
+            // 清除 PhoneWindow 装饰层内部容器背景(从主题 android:background 继承了 main_bg),
+            // 只保留内容布局 dialog_bg 的圆角灰盒
+            window?.decorView?.let { clearDecorContainerBackgrounds(it) }
+            show()
+        }
+    }
+
+    /** 清除 Dialog 装饰层内部容器背景,防止主题 main_bg 透出。内容背景(dialog_bg)不受影响。 */
+    private fun clearDecorContainerBackgrounds(decor: android.view.View) {
+        if (decor !is android.view.ViewGroup) return
+        // DecorView > LinearLayout(screen) > [ViewStub, FrameLayout(content) > 我们的内容]
+        val screen = decor.getChildAt(0) as? android.view.ViewGroup ?: return
+        screen.background = null
+        val content = screen.getChildAt(1) as? android.view.View ?: return
+        content.background = null
     }
 
     /** 将单个应用绑定到卡片：图片（iconBgUrl 优先,回退 iconUrl） + 点击行为（packageName/intents） */

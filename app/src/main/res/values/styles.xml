@@ -5,4 +5,14 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:background">@color/main_bg</item>
     </style>
+
+    <!-- 版本更新弹窗主题:浮动窗口 + 透明背景,圆角由内容布局 dialog_bg 绘制 -->
+    <!-- 所有 window 级背景属性显式透明,防止从 Theme.TVLauncher 继承深蓝背景 -->
+    <style name="DialogAppUpdateTheme" parent="Theme.AppCompat.Dialog">
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowBackgroundFallback">@android:color/transparent</item>
+        <item name="android:colorBackground">@android:color/transparent</item>
+        <item name="android:colorBackgroundFloating">@android:color/transparent</item>
+    </style>
 </resources>
