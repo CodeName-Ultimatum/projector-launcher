@@ -62,6 +62,8 @@ class LauncherDataParserTest {
         assertNull(app.intents)
         assertNull(app.apkUrl)
         assertNull(app.versionName)
+        assertNull(app.language)
+        assertNull(app.bannerConfig)
     }
 
     @Test
