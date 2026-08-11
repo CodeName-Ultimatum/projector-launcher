@@ -55,7 +55,8 @@ class LauncherCardView @JvmOverloads constructor(
 
         // ─── contentView：承载 背景图 → 白框 两层 ───
         contentView = FrameLayout(context).apply {
-            // 背景图由外部方法设置，这里仅建立结构
+            // 占位背景:不透明主题色,防止图片异步加载前只有 CardView 阴影裸露(先见阴影再见图)
+            setBackgroundColor(ThemeManager.palette().quickBarBg)
         }
         addView(contentView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
 

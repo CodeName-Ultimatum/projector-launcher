@@ -15,6 +15,7 @@
     - 卡片放大 elevation 提升，与快捷栏同容器,可盖到快捷栏区域
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root_container"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/main_bg"

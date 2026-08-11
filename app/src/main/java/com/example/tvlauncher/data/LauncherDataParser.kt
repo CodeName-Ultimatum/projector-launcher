@@ -9,7 +9,7 @@ object LauncherDataParser {
     fun parse(json: String): LauncherData {
         val root = JSONObject(json)
         return LauncherData(
-            config = parseConfig(root.optJSONObject("config")),
+            config = parseConfig(root.opt("config")),
             channel = root.optString("channel").takeIf { it.isNotEmpty() && it != "null" },
             utc = if (root.has("utc")) root.optLong("utc") else null,
             logoUrl = root.optString("logoUrl").takeIf { it.isNotEmpty() && it != "null" },
@@ -17,15 +17,24 @@ object LauncherDataParser {
         )
     }
 
-    private fun parseConfig(o: JSONObject?): LauncherConfig? {
-        if (o == null) return null
+    /**
+     * 解析顶层 config。兼容两种形式:
+     * 1. 对象: "config": {"screenColor": "..."}
+     * 2. 字符串(后端实际下发格式): "config": "{\"screenColor\": \"...\"}"
+     */
+    private fun parseConfig(o: Any?): LauncherConfig? {
+        val obj = when (o) {
+            is JSONObject -> o
+            is String -> try { JSONObject(o) } catch (e: Exception) { null }
+            else -> null
+        } ?: return null
         return LauncherConfig(
-            screenColor = o.optString("screenColor").takeIf { it.isNotEmpty() && it != "null" },
-            lightMode = o.optBoolean("lightMode", false),
-            smallIcon = o.optBoolean("smallIcon", false),
-            displayDesc = o.optBoolean("displayDesc", false),
-            displayHead = o.optBoolean("displayHead", false),
-            displayTitle = o.optBoolean("displayTitle", false)
+            screenColor = obj.optString("screenColor").takeIf { it.isNotEmpty() && it != "null" },
+            lightMode = obj.optBoolean("lightMode", false),
+            smallIcon = obj.optBoolean("smallIcon", false),
+            displayDesc = obj.optBoolean("displayDesc", false),
+            displayHead = obj.optBoolean("displayHead", false),
+            displayTitle = obj.optBoolean("displayTitle", false)
         )
     }
 

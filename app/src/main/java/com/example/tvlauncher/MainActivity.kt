@@ -131,8 +131,7 @@ class MainActivity : AppCompatActivity() {
 
         // 默认主题(后端配置加载前先用默认深色,避免启动白屏)
         ThemeManager.apply(LauncherConfig())
-        window.decorView.setBackgroundColor(ThemeManager.screenColor())
-
+        applyThemeBackgrounds()
         appRepo = AppRepository(this)
         quickStore = QuickAppsStore(this)
         cardDataSource = ApiCardDataSource(
@@ -279,6 +278,19 @@ class MainActivity : AppCompatActivity() {
             }
             panelView.setApps(apps)
         }
+    }
+
+    /**
+     * 统一设置主背景各层为 ThemeManager.screenColor:
+     * - decorView / root_container:最底背景
+     * - main_container:关键遮罩层,必须不透明,否则底层 panel_container 会漏出来。
+     *   原来靠主题继承 main_bg 盖住,主题改透明后需显式设置。
+     */
+    private fun applyThemeBackgrounds() {
+        val color = ThemeManager.screenColor()
+        window.decorView.setBackgroundColor(color)
+        findViewById<View>(R.id.root_container)?.setBackgroundColor(color)
+        findViewById<View>(R.id.main_container)?.setBackgroundColor(color)
     }
 
     /** 根据当前主题色板重建面板竖向渐变背景，供初始化和主题变化时调用 */
@@ -653,7 +665,7 @@ class MainActivity : AppCompatActivity() {
                     // 离线且缓存齐全：恢复上次联网的卡片内容
                     if (cachedApps != null) {
                         snapshotData?.config?.let { ThemeManager.apply(it) }
-                        window.decorView.setBackgroundColor(ThemeManager.screenColor())
+                        applyThemeBackgrounds()
                         refreshThemeColors()
                         snapshotData?.logoUrl?.let { statusBar.setLogoUrl(it) }
                         bindCachedCards(cachedApps)
@@ -674,7 +686,7 @@ class MainActivity : AppCompatActivity() {
                     if (networkMode && launcherData != null) {
                         // 应用后端主题(背景色 + lightMode);快照缓存路径在离线分支下也用快照 config 应用一次
                         launcherData.config?.let { ThemeManager.apply(it) }
-                        window.decorView.setBackgroundColor(ThemeManager.screenColor())
+                        applyThemeBackgrounds()
                         refreshThemeColors()
                         launcherData.logoUrl?.let { statusBar.setLogoUrl(it) }
                         bindCardsFromLauncherData(launcherData)

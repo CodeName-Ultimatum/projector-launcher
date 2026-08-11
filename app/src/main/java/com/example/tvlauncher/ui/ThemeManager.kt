@@ -3,7 +3,15 @@ package com.example.tvlauncher.ui
 import android.graphics.Color
 import com.example.tvlauncher.data.LauncherConfig
 
-/** 全局主题色板管理器:按后端 screenColor/lightMode 计算并分发主题色 */
+/**
+ * 全局主题色板管理器:所有组件色从后端 screenColor 派生,消灭写死的深蓝。
+ *
+ * 派生策略(HSL 亮度调整):
+ * - 深色模式(lightMode=false):背景=screenColor,面板渐变=screenColor 亮/暗变体,
+ *   quickBar=screenColor 更亮一档,图标/文字=白色系,聚焦边框=白。
+ * - 浅色模式(lightMode=true):背景=screenColor 提亮到很浅,面板渐变=浅色变体,
+ *   quickBar=浅色,图标/文字=深色系,聚焦边框=深。
+ */
 object ThemeManager {
 
     data class Palette(
@@ -16,38 +24,68 @@ object ThemeManager {
         val statusBarTextColor: Int
     )
 
-    private val darkPalette = Palette(
-        screenColor = Color.parseColor("#373778"),
-        panelGradientTop = Color.parseColor("#4A4A9C"),
-        panelGradientBottom = Color.parseColor("#2B2B5C"),
-        quickBarBg = Color.parseColor("#FF354D96"),
-        statusBarIconTint = Color.parseColor("#E6E6E6"),
-        cardFocusBorder = Color.WHITE,
-        statusBarTextColor = Color.WHITE
-    )
-
-    private val lightPalette = Palette(
-        screenColor = Color.parseColor("#F2F2F5"),
-        panelGradientTop = Color.parseColor("#D6D6E8"),
-        panelGradientBottom = Color.parseColor("#B8B8D0"),
-        quickBarBg = Color.parseColor("#E0E0F0"),
-        statusBarIconTint = Color.parseColor("#3A3A4A"),
-        cardFocusBorder = Color.parseColor("#1A1A1A"),
-        statusBarTextColor = Color.parseColor("#1A1A1A")
-    )
-
     var current: LauncherConfig? = null
 
     fun apply(config: LauncherConfig) {
         current = config
     }
 
-    fun palette(): Palette = if (current?.lightMode == true) lightPalette else darkPalette
+    /** 主屏背景色:lightMode=true 用浅色派生,否则用配置 screenColor(缺省深蓝)。 */
+    fun screenColor(): Int = if (current?.lightMode == true) {
+        baseColor().lighten(0.55f)
+    } else {
+        baseColor()
+    }
 
-    fun screenColor(): Int = current?.screenColor
+    /** 配置的 screenColor(校验后),无则默认深蓝 #373778 */
+    private fun baseColor(): Int = current?.screenColor
         ?.takeIf { it.startsWith("#") }
         ?.let { runCatching { Color.parseColor(it) }.getOrNull() }
-        ?: palette().screenColor
+        ?: Color.parseColor("#373778")
 
     fun lightMode(): Boolean = current?.lightMode == true
+
+    /** 按 screenColor + lightMode 计算整套色板(每次实时派生,随主题变化) */
+    fun palette(): Palette {
+        val base = baseColor()
+        return if (current?.lightMode == true) {
+            // 浅色模式:背景提亮到很浅,组件更深以形成对比,文字深色
+            Palette(
+                screenColor = base.lighten(0.55f),
+                panelGradientTop = base.lighten(0.40f),
+                panelGradientBottom = base.lighten(0.30f),
+                quickBarBg = base.lighten(0.20f),
+                statusBarIconTint = Color.parseColor("#2A2A3A"),
+                cardFocusBorder = Color.parseColor("#1A1A1A"),
+                statusBarTextColor = Color.parseColor("#1A1A1A")
+            )
+        } else {
+            // 深色模式:组件从 screenColor 派生(亮/暗变体),保持同色系,文字白
+            Palette(
+                screenColor = base,
+                panelGradientTop = base.lighten(0.12f),
+                panelGradientBottom = base.darken(0.15f),
+                quickBarBg = base.lighten(0.08f),
+                statusBarIconTint = Color.parseColor("#E6E6E6"),
+                cardFocusBorder = Color.WHITE,
+                statusBarTextColor = Color.WHITE
+            )
+        }
+    }
+
+    /** 按比例提亮亮度(0..1,保持色相饱和) */
+    private fun Int.lighten(factor: Float): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(this, hsv)
+        hsv[2] = (hsv[2] + (1f - hsv[2]) * factor).coerceIn(0f, 1f)
+        return Color.HSVToColor(hsv)
+    }
+
+    /** 按比例压暗亮度(0..1) */
+    private fun Int.darken(factor: Float): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(this, hsv)
+        hsv[2] = (hsv[2] * (1f - factor)).coerceIn(0f, 1f)
+        return Color.HSVToColor(hsv)
+    }
 }

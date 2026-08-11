@@ -3,7 +3,9 @@
     <style name="Theme.TVLauncher" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:background">@color/main_bg</item>
+        <!-- 背景改透明:不透明 main_bg 会被窗口装饰层继承并盖住 ThemeManager 动态设置的 screenColor。
+             实际背景由 activity_main.xml 根布局持有,运行时由 ThemeManager 覆盖 -->
+        <item name="android:background">@android:color/transparent</item>
     </style>
 
     <!-- 版本更新弹窗主题:浮动窗口 + 透明背景,圆角由内容布局 dialog_bg 绘制 -->

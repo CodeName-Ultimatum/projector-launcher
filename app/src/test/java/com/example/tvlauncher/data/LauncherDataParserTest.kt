@@ -49,6 +49,19 @@ class LauncherDataParserTest {
     }
 
     @Test
+    fun `parse reads config when it is a JSON string`() {
+        val data = LauncherDataParser.parse("""{"config":"{\"screenColor\":\"#1B7A6B\",\"lightMode\":true}"}""")
+        assertEquals("#1B7A6B", data.config?.screenColor)
+        assertTrue(data.config!!.lightMode)
+    }
+
+    @Test
+    fun `parse config falls back to null for malformed string`() {
+        val data = LauncherDataParser.parse("""{"config":"not-json"}""")
+        assertNull(data.config?.screenColor)
+    }
+
+    @Test
     fun `parse treats json null strings as kotlin null`() {
         val json = """{"config":{"screenColor":null},"modules":[{"moduleName":"home","sort":0,"productGroups":[{"groupName":"g1","sort":1,"config":null,"groupApps":[{"appName":null,"packageName":null,"iconUrl":null,"iconBgUrl":null,"md5":null,"intents":null,"config":null,"sort":1,"apkUrl":null,"isCheckVer":0,"versionName":null,"versionCode":0,"isApk":0,"language":null,"bannerConfig":null}]}]}]}"""
         val data = LauncherDataParser.parse(json)
