@@ -120,6 +120,32 @@ class MainActivity : AppCompatActivity() {
     /** 默认文件管理器包名（设备软通文件管理器）,可被后端 CardConfig 覆盖 */
     private val defaultFileManagerPackage = "com.softwinner.TvdFileManager"
 
+    /**
+     * 兜底主页视频卡的应用包名 → 卡槽映射。
+     * 深色背景的原应用图标放背景较亮的卡槽(iviCard 大卡、上排左2、下排3),与深色太空背景错开;
+     * 白色功能图标放背景较深的卡槽(上排右1、中排2),保持对比度。
+     * 仅在无法拉取后端数据(cutter 兜底)时显示,叠加原应用图标并绑定点击。
+     */
+    private val fallbackVideoApps = mapOf(
+        0 to "com.google.android.youtube.tv",  // iviCard 大卡:YouTube
+        // 上排(1,2,3) 留给功能卡(白剪影,深色背景区)
+        4 to "com.android.chrome",             // 中排1:Chrome
+        5 to "ru.ivi.client",                  // 中排2:IVI
+        6 to "ru.kinopoisk.tv",                // 下排1:Kinopoisk(深色图标→亮背景区)
+        7 to "ru.vk.store.tv",                 // 下排2:VK Video(白色播放键图标,亮背景区清晰)
+        8 to "com.ottplay.ottplay"             // 下排3:OKKO
+    )
+
+    /** 兜底主页功能卡(白色剪影,放深色背景卡槽) → (卡槽索引, 图标资源, 点击行为) */
+    private data class FallbackFuncCard(val iconRes: Int, val onClick: MainActivity.() -> Unit)
+
+    private val fallbackFuncCards: Map<Int, FallbackFuncCard>
+        get() = mapOf(
+            1 to FallbackFuncCard(R.drawable.ic_settings_card) { openSettings() },    // 上排1:设置
+            2 to FallbackFuncCard(R.drawable.ic_file_manager_card) { openFileManager() }, // 上排2:文件管理
+            3 to FallbackFuncCard(R.drawable.ic_app_list) { openAppList() }           // 上排3:应用列表
+        )
+
     // ─── 常量 ─────────────────────────────────────────────────────
 
     companion object {
@@ -598,7 +624,7 @@ class MainActivity : AppCompatActivity() {
                 })
         }
 
-        // 下排：3张功能卡片（应用列表/设置/文件管理）——整图模式,无图标无名称
+        // 下排：3张卡片——整图模式,无图标无名称;点击行为由兜底/联网绑定统一设置
         for (i in 0 until 3) {
             val card = createCard(isWide = false)
             card.onCardFocusChanged = { hasFocus ->
@@ -613,12 +639,7 @@ class MainActivity : AppCompatActivity() {
                     leftMargin = halfGapH
                     rightMargin = halfGapH
                 })
-
-            when (i) {
-                0 -> card.onCardClicked = { openAppList() }
-                1 -> card.onCardClicked = { openSettings() }
-                2 -> card.onCardClicked = { openFileManager() }
-            }        }
+        }
     }
 
     /** 创建一张卡片并加入 cardViews 列表 */
@@ -739,11 +760,8 @@ class MainActivity : AppCompatActivity() {
                                 cardViews[cardIdx].setCardBackground(cutter.getTile(i))
                             }
                         }
-                        // 下排 3 张功能卡(cardViews[5/6/7]=应用列表/设置/文件管理)叠加白色图标,
-                        // 让保底主页的功能卡可识别(否则只是无标识的背景图块)
-                        cardViews.getOrNull(5)?.setCardOverlayIcon(R.drawable.ic_app_list)
-                        cardViews.getOrNull(6)?.setCardOverlayIcon(R.drawable.ic_settings_card)
-                        cardViews.getOrNull(7)?.setCardOverlayIcon(R.drawable.ic_file_manager_card)
+                        // 6 张视频卡 + 3 张功能卡:叠加图标 + 绑定点击(深色/白色图标按背景明暗分区)
+                        bindFallbackVideoCards()
                     }
                     setupFocusNavigation()
                     hideSkeletonOverlay()  // 秒开:首屏不等网络
@@ -826,6 +844,40 @@ class MainActivity : AppCompatActivity() {
             } else {
                 { showDarkToast(R.string.not_configured) }
             }
+        }
+    }
+
+    /**
+     * 兜底主页：为视频卡叠加原应用图标并绑定点击,为功能卡叠加白色剪影图标并绑定点击。
+     * 图标运行时从 packageManager 取(无需打包资源);未安装的应用不叠图标,点击 toast 未配置。
+     * 视频卡原图标是自适应图标(自带背景),scale 取 0.38 避免过大;功能卡白剪影 0.5。
+     */
+    private fun bindFallbackVideoCards() {
+        val targets = listOf(iviCard) + cardViews  // [0]=iviCard, [1..8]=cardViews[0..7]
+        // 视频卡:原应用彩色图标。iviCard 大卡(YouTube)稍大 88dp,其余统一 56dp
+        fallbackVideoApps.forEach { (idx, pkg) ->
+            val card = targets.getOrNull(idx) ?: return@forEach
+            val icon = try {
+                packageManager.getApplicationIcon(pkg)
+            } catch (e: Exception) {
+                null  // 未安装
+            }
+            if (icon != null) {
+                card.setCardOverlayIcon(icon, sizeDp = if (idx == 0) 88 else 56)
+                card.onCardClicked = {
+                    val intent = packageManager.getLaunchIntentForPackage(pkg)
+                    if (intent != null) startActivity(intent)
+                    else showDarkToast("应用无法启动")
+                }
+            } else {
+                card.onCardClicked = { showDarkToast(R.string.not_configured) }
+            }
+        }
+        // 功能卡:白色剪影图标,统一 56dp
+        fallbackFuncCards.forEach { (idx, func) ->
+            val card = targets.getOrNull(idx) ?: return@forEach
+            card.setCardOverlayIcon(func.iconRes, sizeDp = 56)
+            card.onCardClicked = { func.onClick(this) }
         }
     }
 

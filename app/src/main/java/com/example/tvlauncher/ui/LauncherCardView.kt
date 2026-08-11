@@ -125,34 +125,39 @@ class LauncherCardView @JvmOverloads constructor(
     }
 
     /**
-     * 在背景图块上方叠加一个居中的透明图标（约 50% 卡片高度）。
-     * 用于保底模式下让功能卡（应用列表/设置/文件管理）在 bg_full 图块上可识别。
-     * 叠层位于背景之上、聚焦白框之下。
+     * 在背景图块上方叠加一个居中的透明图标。
+     * 用于保底模式下让卡片在 bg_full 图块上可识别。叠层位于背景之上、聚焦白框之下。
+     * sizeDp: 图标边长(固定 dp,各卡视觉大小一致,与卡片尺寸无关)
      */
-    fun setCardOverlayIcon(resId: Int) {
-        val icon = overlayIconView ?: android.widget.ImageView(context).apply {
+    fun setCardOverlayIcon(resId: Int, sizeDp: Int = 56) {
+        ensureOverlayIcon(sizeDp).setImageResource(resId)
+    }
+
+    /** 叠加 Drawable 图标(如运行时获取的原应用图标 packageManager.getApplicationIcon) */
+    fun setCardOverlayIcon(drawable: android.graphics.drawable.Drawable?, sizeDp: Int = 56) {
+        if (drawable == null) return
+        // 复制 Drawable:应用图标实例可能被多处共享,状态竞争会致闪烁
+        val copy = drawable.constantState?.newDrawable()?.mutate() ?: drawable
+        ensureOverlayIcon(sizeDp).setImageDrawable(copy)
+    }
+
+    private fun ensureOverlayIcon(sizeDp: Int): android.widget.ImageView {
+        val size = context.dpToPx(sizeDp)
+        overlayIconView?.let { icon ->
+            if (icon.layoutParams.width != size) {
+                icon.layoutParams = icon.layoutParams.apply { width = size; height = size }
+            }
+            return icon
+        }
+        val icon = android.widget.ImageView(context).apply {
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            // 高度约 50% 卡片,宽度同比例(FIT_CENTER 保持纵横比);居中
-            val lp = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply { gravity = Gravity.CENTER }
+            val lp = FrameLayout.LayoutParams(size, size).apply { gravity = Gravity.CENTER }
             layoutParams = lp
             // 插入到 borderView 之下(borderView 是 contentView 最后一个子视图)
             contentView.addView(this, contentView.childCount - 1)
-            overlayIconView = this
         }
-        icon.setImageResource(resId)
-        // 卡片布局完成后,把图标高度定为卡片高度的 50%
-        contentView.post {
-            val target = (contentView.height * 0.5f).toInt()
-            if (target > 0 && icon.layoutParams.height != target) {
-                icon.layoutParams = icon.layoutParams.apply {
-                    width = target
-                    height = target
-                }
-            }
-        }
+        overlayIconView = icon
+        return icon
     }
 
     /** 移除叠加图标(联网数据到达、卡片显示真实内容时调用,避免图标盖在卡片图上) */
