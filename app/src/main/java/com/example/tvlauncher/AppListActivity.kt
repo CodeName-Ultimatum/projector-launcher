@@ -53,6 +53,10 @@ class AppListActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             // 背景跟随主题(与主页一致),不再硬编码深蓝
             setBackgroundColor(ThemeManager.screenColor())
+            // 第一行应用聚焦放大向上溢出 ScrollView 顶部,需越界绘制到 toolbar 区域;
+            // root 默认 clipChildren=true 会在 ScrollView 顶边裁掉白框,故关闭
+            clipChildren = false
+            clipToPadding = false
         }
 
         // Toolbar（透明背景，融入根布局）
@@ -61,6 +65,9 @@ class AppListActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             // 只留左右 padding;上下 0,让标题在完整 48dp 高度里 gravity=CENTER 真正垂直居中
             setPadding(dpToPx(16), 0, dpToPx(16), 0)
+            // 聚焦应用 item elevation=20 高于 toolbar,白框完整盖住 toolbar 下缘不被切割
+            clipChildren = false
+            clipToPadding = false
         }
 
         val title = TextView(this).apply {
@@ -135,11 +142,16 @@ class AppListActivity : AppCompatActivity() {
 
     private fun loadApps() {
         lifecycleScope.launch {
-            val loaded = withContext(Dispatchers.IO) {
-                appRepo.getInstalledLaunchableApps()
+            // 缓存先行:先用磁盘缓存立即渲染,再后台全量查询刷新
+            val cached = withContext(Dispatchers.IO) { appRepo.readCachedAppList() }
+            if (cached != null) {
+                apps.clear()
+                apps.addAll(cached)
+                buildGrid()
             }
+            val fresh = withContext(Dispatchers.IO) { appRepo.getInstalledLaunchableApps() }
             apps.clear()
-            apps.addAll(loaded)
+            apps.addAll(fresh)
             buildGrid()
         }
     }

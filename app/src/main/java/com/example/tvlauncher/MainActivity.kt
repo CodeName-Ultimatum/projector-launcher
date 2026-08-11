@@ -296,8 +296,9 @@ class MainActivity : AppCompatActivity() {
     /** 创建应用面板并绑定数据源（面板平时被卡片区覆盖） */
     private fun setupPanel() {
         panelContainer = findViewById<View>(R.id.panel_container)
+        val container = panelContainer
         // 面板容器抬升 Z 轴时不画自己的矩形阴影(背景不透明,否则会投出被快捷栏裁剪的原生阴影)
-        setContainerNoShadow(panelContainer)
+        setContainerNoShadow(container)
         // 面板底色:上亮下暗垂直渐变,色值跟随主题
         setupPanelBackground()
         panelView = AppPanelView(this).apply {
@@ -313,24 +314,24 @@ class MainActivity : AppCompatActivity() {
             // 两排正方形格子的高度即面板高度,动态调整 panel_container 高度
             // 需加上容器自身上下 padding,否则内容区比两排矮,聚焦下排时 RecyclerView 会滑动对齐
             onPanelHeight = { heightPx ->
-                val lp = panelContainer.layoutParams
-                val totalHeight = heightPx + panelContainer.paddingTop + panelContainer.paddingBottom
+                val lp = container.layoutParams
+                val totalHeight = heightPx + container.paddingTop + container.paddingBottom
                 if (lp.height != totalHeight) {
                     lp.height = totalHeight
-                    panelContainer.layoutParams = lp
+                    container.layoutParams = lp
                 }
                 // 面板高度变化后同步阴影位置
-                panelContainer.post { updateShadowPosition() }
+                container.post { updateShadowPosition() }
             }
         }
-        (panelContainer as android.widget.FrameLayout).addView(panelView)
+        (container as android.widget.FrameLayout).addView(panelView)
 
         // 面板上下边缘阴影带:加到根容器,贴面板外边缘,不受 panel_container 内边距影响
         val rootContainer = findViewById<android.widget.FrameLayout>(android.R.id.content).getChildAt(0) as android.widget.FrameLayout
         shadowTop = createPanelShadowBar(rootContainer, isTop = true)
         shadowBottom = createPanelShadowBar(rootContainer, isTop = false)
         // 初始布局完成后同步阴影位置
-        panelContainer.post { updateShadowPosition() }
+        container.post { updateShadowPosition() }
 
         // 面板展开时覆盖卡片区的天蓝亮蒙版:加在内容根最顶层,盖住卡片区(含卡片)
         val contentRoot = window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content)
@@ -352,12 +353,12 @@ class MainActivity : AppCompatActivity() {
         }
         contentRoot?.addView(panelGlow)
 
-        // 异步加载应用列表
+        // 应用列表:先用磁盘缓存立即显示,后台全量查询刷新(缓存先行,避免全量查询阻塞)
         lifecycleScope.launch {
-            val apps = withContext(Dispatchers.IO) {
-                appRepo.getInstalledLaunchableApps()
-            }
-            panelView.setApps(apps)
+            val cached = withContext(Dispatchers.IO) { appRepo.readCachedAppList() }
+            if (cached != null) panelView.setApps(cached)
+            val fresh = withContext(Dispatchers.IO) { appRepo.getInstalledLaunchableApps() }
+            panelView.setApps(fresh)
         }
     }
 
@@ -711,7 +712,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             lifecycleScope.launch {
-                val tLaunch = System.currentTimeMillis()
                 // ── 1. 先读快照/缓存/兜底(秒开,不依赖网络) ──
                 val snapshotData = withContext(Dispatchers.IO) {
                     cardDataSource.loadLauncherDataSnapshot()
@@ -720,7 +720,6 @@ class MainActivity : AppCompatActivity() {
                 val cachedApps: List<GroupApp?>? = if (snapshotData != null) {
                     withContext(Dispatchers.IO) { loadCachedCardApps(snapshotData) }
                 } else null
-                android.util.Log.d("TVL", "快照+缓存探测: ${System.currentTimeMillis() - tLaunch}ms snapshot=${snapshotData != null} cached=${cachedApps != null}")
 
                 // 无快照 → 裁剪本地背景图兜底
                 val cutter = withContext(Dispatchers.IO) {
@@ -765,7 +764,6 @@ class MainActivity : AppCompatActivity() {
                     }
                     setupFocusNavigation()
                     hideSkeletonOverlay()  // 秒开:首屏不等网络
-                    android.util.Log.d("TVL", "首屏渲染(骨架屏消失): ${System.currentTimeMillis() - tLaunch}ms")
                 }
 
                 // ── 3. 后台并发拉后端,utc 变化才刷新(不阻塞首屏) ──
@@ -773,7 +771,6 @@ class MainActivity : AppCompatActivity() {
                     cardDataSource.loadLauncherData()
                 }
                 val launcherData = rawData?.takeIf { hasBindableApps(it) }
-                android.util.Log.d("TVL", "后台拉后端: ${System.currentTimeMillis() - tLaunch}ms applied=${launcherData != null}")
                 if (launcherData != null) {
                     withContext(Dispatchers.Main) {
                         // 应用后端主题 + 刷新卡片(utc 相同则 loadLauncherData 返回 null,不重绑)

@@ -60,6 +60,9 @@ class StatusBarView @JvmOverloads constructor(
     private val connectivityManager: ConnectivityManager
     private var receiverRegistered = false
 
+    /** HDMI 无法主动查询状态,只能依赖插拔广播;记录最近一次广播状态,onResume 重初始化时恢复 */
+    private var hdmiPlugged = false
+
     /** 以太网插拔无专用广播，用网络能力回调监听。回调在 ConnectivityThread，UI 更新须切回主线程 */
     private val ethernetCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: android.net.Network) {
@@ -95,6 +98,7 @@ class StatusBarView @JvmOverloads constructor(
                 }
                 "android.intent.action.HDMI_PLUGGED" -> {
                     val state = intent.getBooleanExtra("state", false)
+                    hdmiPlugged = state
                     updateHdmi(state)
                 }
             }
@@ -231,7 +235,7 @@ class StatusBarView @JvmOverloads constructor(
         updateDateAndWeekday()
         updateNetworkIcons()
         updateBluetooth()
-        updateHdmi()
+        updateHdmi(hdmiPlugged)  // 用记住的 HDMI 状态恢复,而非默认 false 强制隐藏
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_TIME_TICK)
             addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
@@ -279,18 +283,13 @@ class StatusBarView @JvmOverloads constructor(
      * 规避 H313 主板对 WifiInfo.networkId 的净化返回
      * - 已连接 WiFi 且为活跃网络：点亮满格图标
      * - 未连接或活跃网络非 WiFi：隐藏图标（GONE）
+     * 状态未变化时不触碰视图,避免 onResume 重新初始化时 GONE→VISIBLE 闪烁
      */
     private fun updateWifi() {
-        val activeNetwork = connectivityManager.activeNetwork ?: return run { wifiIcon.visibility = GONE }
-        val caps = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return run { wifiIcon.visibility = GONE }
-
-        if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-            wifiIcon.visibility = GONE
-            return
-        }
-
-        wifiIcon.setImageResource(R.drawable.ic_wifi_4)
-        wifiIcon.visibility = VISIBLE
+        val activeNetwork = connectivityManager.activeNetwork
+        val caps = activeNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
+        val show = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        setIconVisible(wifiIcon, R.drawable.ic_wifi_4, show)
     }
 
     /**
@@ -298,16 +297,18 @@ class StatusBarView @JvmOverloads constructor(
      * 与 WiFi 互斥：同一时刻活跃网络只有一种传输类型。
      */
     private fun updateEthernet() {
-        val activeNetwork = connectivityManager.activeNetwork ?: return run { ethernetIcon.visibility = GONE }
-        val caps = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return run { ethernetIcon.visibility = GONE }
+        val activeNetwork = connectivityManager.activeNetwork
+        val caps = activeNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
+        val show = caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
+        setIconVisible(ethernetIcon, R.drawable.ic_ethernet, show)
+    }
 
-        if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
-            ethernetIcon.visibility = GONE
-            return
-        }
-
-        ethernetIcon.setImageResource(R.drawable.ic_ethernet)
-        ethernetIcon.visibility = VISIBLE
+    /** 仅当目标可见性与当前不同时才修改(且点亮前先设图),避免无变化的重复刷新导致闪烁 */
+    private fun setIconVisible(icon: ImageView, resId: Int, show: Boolean) {
+        val target = if (show) VISIBLE else GONE
+        if (icon.visibility == target) return
+        if (show) icon.setImageResource(resId)
+        icon.visibility = target
     }
 
     /**
@@ -321,44 +322,34 @@ class StatusBarView @JvmOverloads constructor(
 
     /** 更新蓝牙图标 — 有已连接的蓝牙 Profile 时点亮，否则隐藏 */
     private fun updateBluetooth() {
-        if (bluetoothAdapter == null) {
-            bluetoothIcon.visibility = GONE
-            return
-        }
-        val profiles = intArrayOf(
-            BluetoothProfile.A2DP,
-            BluetoothProfile.HEADSET,
-            BluetoothProfile.GATT
-        )
-        for (p in profiles) {
-            @Suppress("DEPRECATION")
-            val connected = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) ==
-                    android.content.pm.PackageManager.PERMISSION_GRANTED &&
+        var connected = false
+        if (bluetoothAdapter != null) {
+            val profiles = intArrayOf(
+                BluetoothProfile.A2DP,
+                BluetoothProfile.HEADSET,
+                BluetoothProfile.GATT
+            )
+            for (p in profiles) {
+                @Suppress("DEPRECATION")
+                val ok = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                        bluetoothAdapter.getProfileConnectionState(p) == BluetoothProfile.STATE_CONNECTED
+                } else {
                     bluetoothAdapter.getProfileConnectionState(p) == BluetoothProfile.STATE_CONNECTED
-            } else {
-                bluetoothAdapter.getProfileConnectionState(p) == BluetoothProfile.STATE_CONNECTED
-            }
-            if (connected) {
-                bluetoothIcon.setImageResource(R.drawable.ic_bluetooth)
-                bluetoothIcon.visibility = VISIBLE
-                return
+                }
+                if (ok) { connected = true; break }
             }
         }
-        bluetoothIcon.visibility = GONE
+        setIconVisible(bluetoothIcon, R.drawable.ic_bluetooth, connected)
     }
 
     /**
      * 更新 HDMI 图标 — 收到 HDMI 插拔广播时点亮或隐藏。
-     * 启动时无法主动查询 HDMI 状态，因此默认隐藏，等待广播。
+     * 启动时无法主动查询 HDMI 状态,用 hdmiPlugged 记录的最近状态;无变化不刷新避免闪烁。
      */
-    private fun updateHdmi(state: Boolean = false) {
-        if (state) {
-            hdmiIcon.setImageResource(R.drawable.ic_hdmi)
-            hdmiIcon.visibility = VISIBLE
-        } else {
-            hdmiIcon.visibility = GONE
-        }
+    private fun updateHdmi(state: Boolean = hdmiPlugged) {
+        setIconVisible(hdmiIcon, R.drawable.ic_hdmi, state)
     }
 
     /** 设置左上角 Logo 图片 URL;加载失败回退本地科技感图标 */
