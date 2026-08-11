@@ -48,13 +48,18 @@ object ThemeManager {
     /** 按 screenColor + lightMode 计算整套色板(每次实时派生,随主题变化) */
     fun palette(): Palette {
         val base = baseColor()
+        // 面板渐变:后端 panelGradientTop/Bottom 有值用下发色,缺失用派生色
+        val derivedTop = if (current?.lightMode == true) base.lighten(0.40f) else base.lighten(0.12f)
+        val derivedBottom = if (current?.lightMode == true) base.lighten(0.30f) else base.darken(0.15f)
+        // 快捷栏格子:后端 quickBarBg 有值用下发色;缺失时按背景深浅自适应(深背景→浅格子,浅背景→深格子)
+        val derivedQuickBar = if (current?.lightMode == true) base.darken(0.35f) else base.lighten(0.35f)
         return if (current?.lightMode == true) {
             // 浅色模式:背景提亮到很浅,组件更深以形成对比,文字深色
             Palette(
                 screenColor = base.lighten(0.55f),
-                panelGradientTop = base.lighten(0.40f),
-                panelGradientBottom = base.lighten(0.30f),
-                quickBarBg = base.lighten(0.20f),
+                panelGradientTop = current?.panelGradientTop?.parseColor() ?: derivedTop,
+                panelGradientBottom = current?.panelGradientBottom?.parseColor() ?: derivedBottom,
+                quickBarBg = current?.quickBarBg?.parseColor() ?: derivedQuickBar,
                 statusBarIconTint = Color.parseColor("#2A2A3A"),
                 cardFocusBorder = Color.WHITE,  // 卡片聚焦边框始终白色(深浅色一致)
                 statusBarTextColor = Color.parseColor("#1A1A1A")
@@ -63,15 +68,19 @@ object ThemeManager {
             // 深色模式:组件从 screenColor 派生(亮/暗变体),保持同色系,文字白
             Palette(
                 screenColor = base,
-                panelGradientTop = base.lighten(0.12f),
-                panelGradientBottom = base.darken(0.15f),
-                quickBarBg = base.lighten(0.08f),
+                panelGradientTop = current?.panelGradientTop?.parseColor() ?: derivedTop,
+                panelGradientBottom = current?.panelGradientBottom?.parseColor() ?: derivedBottom,
+                quickBarBg = current?.quickBarBg?.parseColor() ?: derivedQuickBar,
                 statusBarIconTint = Color.parseColor("#E6E6E6"),
                 cardFocusBorder = Color.WHITE,
                 statusBarTextColor = Color.WHITE
             )
         }
     }
+
+    /** 解析 "#RRGGBB" 颜色字符串,非法返回 null */
+    private fun String.parseColor(): Int? =
+        takeIf { startsWith("#") }?.let { runCatching { Color.parseColor(it) }.getOrNull() }
 
     /** 按比例提亮亮度(0..1,保持色相饱和) */
     private fun Int.lighten(factor: Float): Int {

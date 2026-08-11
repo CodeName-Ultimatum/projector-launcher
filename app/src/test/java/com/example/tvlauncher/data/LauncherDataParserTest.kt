@@ -110,4 +110,17 @@ class LauncherDataParserTest {
         assertNull(data.utc)
         assertNull(data.logoUrl)
     }
+
+    @Test
+    fun `parse reads panel gradient colors from string config`() {
+        val data = LauncherDataParser.parse("""{"config":"{\"panelGradientTop\":\"#123456\",\"panelGradientBottom\":\"#654321\"}"}""")
+        assertEquals("#123456", data.config?.panelGradientTop)
+        assertEquals("#654321", data.config?.panelGradientBottom)
+    }
+
+    @Test
+    fun `parse reads quickBarBg from string config`() {
+        val data = LauncherDataParser.parse("""{"config":"{\"quickBarBg\":\"#AABBCC\"}"}""")
+        assertEquals("#AABBCC", data.config?.quickBarBg)
+    }
 }

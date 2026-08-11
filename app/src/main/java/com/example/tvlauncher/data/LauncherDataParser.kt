@@ -30,6 +30,9 @@ object LauncherDataParser {
         } ?: return null
         return LauncherConfig(
             screenColor = obj.optString("screenColor").takeIf { it.isNotEmpty() && it != "null" },
+            panelGradientTop = obj.optString("panelGradientTop").takeIf { it.isNotEmpty() && it != "null" },
+            panelGradientBottom = obj.optString("panelGradientBottom").takeIf { it.isNotEmpty() && it != "null" },
+            quickBarBg = obj.optString("quickBarBg").takeIf { it.isNotEmpty() && it != "null" },
             lightMode = obj.optBoolean("lightMode", false),
             smallIcon = obj.optBoolean("smallIcon", false),
             displayDesc = obj.optBoolean("displayDesc", false),
