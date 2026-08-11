@@ -10,6 +10,9 @@ object LauncherDataParser {
         val root = JSONObject(json)
         return LauncherData(
             config = parseConfig(root.optJSONObject("config")),
+            channel = root.optString("channel").takeIf { it.isNotEmpty() && it != "null" },
+            utc = if (root.has("utc")) root.optLong("utc") else null,
+            logoUrl = root.optString("logoUrl").takeIf { it.isNotEmpty() && it != "null" },
             modules = root.optJSONArray("modules")?.let(::parseModules) ?: emptyList()
         )
     }
@@ -79,7 +82,16 @@ object LauncherDataParser {
                 isCheckVer = o.optInt("isCheckVer", 0),
                 versionName = o.optString("versionName").takeIf { it.isNotEmpty() && it != "null" },
                 versionCode = o.optInt("versionCode", 0),
-                isApk = o.optInt("isApk", 0)
+                isApk = o.optInt("isApk", 0),
+                language = o.optString("language").takeIf { it.isNotEmpty() && it != "null" },
+                bannerConfig = o.optJSONObject("bannerConfig")?.let { bc ->
+                    BannerConfig(
+                        button = bc.optString("button").takeIf { it.isNotEmpty() && it != "null" },
+                        content = bc.optString("content").takeIf { it.isNotEmpty() && it != "null" },
+                        title = bc.optString("title").takeIf { it.isNotEmpty() && it != "null" },
+                        viewType = bc.optString("viewType").takeIf { it.isNotEmpty() && it != "null" }
+                    )
+                }
             ))
         }
         return apps

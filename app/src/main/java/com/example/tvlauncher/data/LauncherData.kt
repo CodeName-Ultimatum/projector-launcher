@@ -3,6 +3,9 @@ package com.example.tvlauncher.data
 /** data.json 根节点 */
 data class LauncherData(
     val config: LauncherConfig? = null,
+    val channel: String? = null,
+    val utc: Long? = null,
+    val logoUrl: String? = null,
     val modules: List<LauncherModule> = emptyList()
 )
 
@@ -35,7 +38,9 @@ data class GroupApp(
     val isCheckVer: Int = 0,
     val versionName: String? = null,
     val versionCode: Int = 0,
-    val isApk: Int = 0
+    val isApk: Int = 0,
+    val language: String? = null,
+    val bannerConfig: BannerConfig? = null
 ) {
     /** intents 内置行为 → 目标包名；无则 null */
     fun resolveIntent(): String? = when (intents) {
@@ -53,4 +58,12 @@ data class AppConfig(
     val height: Int = 0,
     val behavior: String? = null,
     val displayName: Int = 0
+)
+
+/** 卡片 Banner 配置(data.json groupApps[].bannerConfig)。只解析+存储,暂不渲染 */
+data class BannerConfig(
+    val button: String? = null,
+    val content: String? = null,
+    val title: String? = null,
+    val viewType: String? = null
 )

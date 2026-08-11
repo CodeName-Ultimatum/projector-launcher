@@ -15,7 +15,7 @@ class LauncherDataParserTest {
          "modules":[{"moduleName":"home","sort":0,
            "productGroups":[{"config":"{\"width\": 989, \"height\": 339, \"arrange\": \"carousel\", \"textColor\": \"#fff\", \"displayTitle\": true}",
              "groupName":"group1","sort":1,
-             "groupApps":[{"appName":"Settings","intents":"","packageName":"com.nexgen.launcher","iconUrl":null,"iconBgUrl":"http://x/banner_00.jpg","md5":"84b2d83c4c32af9427eae1166f8acd87","config":{"top":0,"left":0,"width":195,"height":115,"behavior":"app","displayName":0},"sort":1,"isCheckVer":0,"versionName":"0.0.0","versionCode":0}]}]}]}
+             "groupApps":[{"appName":"Settings","intents":"","packageName":"com.nexgen.launcher","iconUrl":null,"iconBgUrl":"http://x/banner_00.jpg","md5":"84b2d83c4c32af9427eae1166f8acd87","config":{"top":0,"left":0,"width":195,"height":115,"behavior":"app","displayName":0},"sort":1,"isCheckVer":0,"versionName":"0.0.0","versionCode":0,"language":"en-US","bannerConfig":{"button":"","content":"","title":"","viewType":"0"}}]}]}]}
     """.trimIndent()
 
     @Test
@@ -50,7 +50,7 @@ class LauncherDataParserTest {
 
     @Test
     fun `parse treats json null strings as kotlin null`() {
-        val json = """{"config":{"screenColor":null},"modules":[{"moduleName":"home","sort":0,"productGroups":[{"groupName":"g1","sort":1,"config":null,"groupApps":[{"appName":null,"packageName":null,"iconUrl":null,"iconBgUrl":null,"md5":null,"intents":null,"config":null,"sort":1,"apkUrl":null,"isCheckVer":0,"versionName":null,"versionCode":0,"isApk":0}]}]}]}"""
+        val json = """{"config":{"screenColor":null},"modules":[{"moduleName":"home","sort":0,"productGroups":[{"groupName":"g1","sort":1,"config":null,"groupApps":[{"appName":null,"packageName":null,"iconUrl":null,"iconBgUrl":null,"md5":null,"intents":null,"config":null,"sort":1,"apkUrl":null,"isCheckVer":0,"versionName":null,"versionCode":0,"isApk":0,"language":null,"bannerConfig":null}]}]}]}"""
         val data = LauncherDataParser.parse(json)
         assertNull(data.config?.screenColor)
         val app = data.modules[0].productGroups[0].groupApps[0]
@@ -70,5 +70,29 @@ class LauncherDataParserTest {
         val st = GroupApp(intents = "SETTINGS")
         assertEquals("com.android.settings", st.resolveIntent())
         assertNull(GroupApp(intents = "").resolveIntent())
+    }
+
+    @Test
+    fun `parse reads channel utc logoUrl`() {
+        val data = LauncherDataParser.parse(sampleJson)
+        assertEquals("LauncherNexgen_T950", data.channel)
+        assertEquals(1786005689L, data.utc)
+        assertEquals("http://x/logo.png", data.logoUrl)
+    }
+
+    @Test
+    fun `parse reads groupApp language and bannerConfig`() {
+        val app = LauncherDataParser.parse(sampleJson).modules[0].productGroups[0].groupApps[0]
+        assertEquals("en-US", app.language)
+        assertEquals("0", app.bannerConfig?.viewType)
+        assertNull(app.bannerConfig?.title)
+    }
+
+    @Test
+    fun `parse missing optional fields defaults to null`() {
+        val data = LauncherDataParser.parse("""{"config":{}}""")
+        assertNull(data.channel)
+        assertNull(data.utc)
+        assertNull(data.logoUrl)
     }
 }
