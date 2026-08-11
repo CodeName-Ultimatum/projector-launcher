@@ -56,7 +56,7 @@ object ThemeManager {
                 panelGradientBottom = base.lighten(0.30f),
                 quickBarBg = base.lighten(0.20f),
                 statusBarIconTint = Color.parseColor("#2A2A3A"),
-                cardFocusBorder = Color.parseColor("#1A1A1A"),
+                cardFocusBorder = Color.WHITE,  // 卡片聚焦边框始终白色(深浅色一致)
                 statusBarTextColor = Color.parseColor("#1A1A1A")
             )
         } else {
