@@ -19,6 +19,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import com.bumptech.glide.Glide
 import com.example.tvlauncher.R
 import com.example.tvlauncher.util.dpToPx
 import java.text.SimpleDateFormat
@@ -55,6 +56,7 @@ class StatusBarView @JvmOverloads constructor(
     private val dateText: TextView
     private val weekdayText: TextView
     private val timeText: TextClock
+    private val projectorIcon: ImageView
     private val connectivityManager: ConnectivityManager
     private var receiverRegistered = false
 
@@ -111,13 +113,14 @@ class StatusBarView @JvmOverloads constructor(
         gravity = Gravity.BOTTOM
 
         // ─── 科技感图标 32x32dp，左上角固定 ───
-        addView(ImageView(context).apply {
+        projectorIcon = ImageView(context).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
             setImageResource(R.drawable.ic_projector_sci)
             layoutParams = LayoutParams(context.dpToPx(44), context.dpToPx(41)).apply {
                 gravity = Gravity.CENTER_VERTICAL
             }
-        })
+        }
+        addView(projectorIcon)
 
         // ─── 弹性占位（左侧）— 把连接图标组推到中间偏右 ───
         addView(android.view.View(context).apply {
@@ -356,6 +359,20 @@ class StatusBarView @JvmOverloads constructor(
         } else {
             hdmiIcon.visibility = GONE
         }
+    }
+
+    /** 设置左上角 Logo 图片 URL;加载失败回退本地科技感图标 */
+    fun setLogoUrl(url: String?) {
+        if (url.isNullOrBlank()) {
+            projectorIcon.setImageResource(R.drawable.ic_projector_sci)
+            return
+        }
+        Glide.with(context)
+            .load(url)
+            .fitCenter()
+            .placeholder(R.drawable.ic_projector_sci)
+            .error(R.drawable.ic_projector_sci)
+            .into(projectorIcon)
     }
 }
 

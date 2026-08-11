@@ -23,12 +23,15 @@ import com.example.tvlauncher.data.ApiCardDataSource
 import com.example.tvlauncher.data.CardDataSource
 import com.example.tvlauncher.data.FileCardDataSource
 import com.example.tvlauncher.data.GroupApp
+import com.example.tvlauncher.data.LauncherConfig
 import com.example.tvlauncher.data.LauncherData
+import com.example.tvlauncher.data.PrefsLongStorage
 import com.example.tvlauncher.data.QuickAppsStore
 import com.example.tvlauncher.ui.AppPanelView
 import com.example.tvlauncher.ui.LauncherCardView
 import com.example.tvlauncher.ui.QuickBarView
 import com.example.tvlauncher.ui.StatusBarView
+import com.example.tvlauncher.ui.ThemeManager
 import com.example.tvlauncher.util.BackgroundCutter
 import com.example.tvlauncher.util.dpToPx
 import com.example.tvlauncher.util.showDarkToast
@@ -122,13 +125,17 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // 覆盖主题的深蓝窗口背景，避免透出（深色极简风格）
-        window.decorView.setBackgroundColor(Color.parseColor("#0F1419"))
+        // 默认主题(后端配置加载前先用默认深色,避免启动白屏)
+        ThemeManager.apply(LauncherConfig())
+        window.decorView.setBackgroundColor(ThemeManager.screenColor())
 
         appRepo = AppRepository(this)
         quickStore = QuickAppsStore(this)
-        // TODO: 替换为真实后端 API 地址（GET，返回与 data.json 相同结构的 JSON）
-        cardDataSource = ApiCardDataSource(this, CARD_API_URL)
+        cardDataSource = ApiCardDataSource(
+            context = this,
+            apiUrl = CARD_API_URL,
+            storage = PrefsLongStorage(this)
+        )
 
         sheet = findViewById<View>(R.id.sheet)
         rowTop = findViewById(R.id.row_top)
@@ -170,6 +177,7 @@ class MainActivity : AppCompatActivity() {
         }
         val container = findViewById<View>(R.id.status_bar_container)
         (container as android.widget.FrameLayout).addView(statusBar)
+        statusBar.setLogoUrl(null)  // 占位;真实 logoUrl 由数据加载后设置
     }
 
     // ─── Quick Bar ───────────────────────────────────────────────
@@ -627,6 +635,9 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     // 离线且缓存齐全：恢复上次联网的卡片内容
                     if (cachedApps != null) {
+                        snapshotData?.config?.let { ThemeManager.apply(it) }
+                        window.decorView.setBackgroundColor(ThemeManager.screenColor())
+                        snapshotData?.logoUrl?.let { statusBar.setLogoUrl(it) }
                         bindCachedCards(cachedApps)
                     } else if (cutter != null) {
                         // 离线兜底：本地背景图块
@@ -643,6 +654,10 @@ class MainActivity : AppCompatActivity() {
                     }
                     // 联网模式：按 data.json 绑定卡片
                     if (networkMode && launcherData != null) {
+                        // 应用后端主题(背景色 + lightMode);快照缓存路径在离线分支下也用快照 config 应用一次
+                        launcherData.config?.let { ThemeManager.apply(it) }
+                        window.decorView.setBackgroundColor(ThemeManager.screenColor())
+                        launcherData.logoUrl?.let { statusBar.setLogoUrl(it) }
                         bindCardsFromLauncherData(launcherData)
                         checkAppUpdates(launcherData)
                     }

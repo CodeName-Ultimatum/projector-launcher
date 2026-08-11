@@ -27,15 +27,6 @@ open class ApiCardDataSource(
     private val readTimeoutMs: Int = 8000
 ) : CardDataSource {
 
-    /** 保留旧构造签名兼容现有调用方（无 storage 注入时自动使用 PrefsLongStorage） */
-    constructor(context: Context, apiUrl: String, connectTimeoutMs: Int = 5000, readTimeoutMs: Int = 8000) : this(
-        context = context,
-        apiUrl = apiUrl,
-        storage = PrefsLongStorage(context),
-        connectTimeoutMs = connectTimeoutMs,
-        readTimeoutMs = readTimeoutMs
-    )
-
     private val channelStore = ChannelStore(storage)
 
     /** 快照仍写本地，供离线时恢复上次联网内容（与 FileCardDataSource 同目录） */
