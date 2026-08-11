@@ -31,3 +31,9 @@ ERRORS.md
 # 本地测试与设计源文件(不提交)
 /test-data*.json
 *.svg
+
+# 后端 mock 数据与测试配置(不提交,仅本地开发)
+/data.json
+/data-v2.json
+/test-configs/
+/app/data/
