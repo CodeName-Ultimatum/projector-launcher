@@ -18,6 +18,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.tvlauncher.data.AppRepository
+import com.example.tvlauncher.data.AppUpdater
 import com.example.tvlauncher.data.CardConfig
 import com.example.tvlauncher.data.ApiCardDataSource
 import com.example.tvlauncher.data.CardDataSource
@@ -72,6 +73,9 @@ class MainActivity : AppCompatActivity() {
 
     /** 卡片配置数据源（后端接入前使用本地空实现） */
     private lateinit var cardDataSource: CardDataSource
+
+    /** 应用更新下载安装器 */
+    private lateinit var appUpdater: AppUpdater
 
     /** 8张右侧卡片（索引：[0-2]上排 [3-4]中排 [5-7]下排） */
     private val cardViews = mutableListOf<LauncherCardView>()
@@ -136,6 +140,7 @@ class MainActivity : AppCompatActivity() {
             apiUrl = CARD_API_URL,
             storage = PrefsLongStorage(this)
         )
+        appUpdater = AppUpdater(this)
 
         sheet = findViewById<View>(R.id.sheet)
         rowTop = findViewById(R.id.row_top)
@@ -809,7 +814,8 @@ class MainActivity : AppCompatActivity() {
             }
             findViewById<android.widget.TextView>(R.id.dialog_message)?.text = "以下应用有新版本：\n$names"
             findViewById<android.widget.Button>(R.id.btn_update)?.setOnClickListener {
-                // TODO: 更新逻辑暂未实现
+                // 逐个下载安装全部 outdated 且有 apkUrl 的应用
+                outdated.forEach { app -> appUpdater.downloadAndInstall(app) }
                 dismiss()
             }
             findViewById<android.widget.Button>(R.id.btn_ignore)?.setOnClickListener { dismiss() }
@@ -960,5 +966,6 @@ class MainActivity : AppCompatActivity() {
         statusBar.stopListening()
         // 释放背景图内存
         backgroundCutter?.recycle()
+        if (::appUpdater.isInitialized) appUpdater.cancelDownloads()
     }
 }
