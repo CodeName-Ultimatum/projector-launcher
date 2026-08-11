@@ -40,6 +40,7 @@ import com.bumptech.glide.Glide
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * TV Launcher 主 Activity — 投影仪/电视启动器首页
@@ -96,6 +97,9 @@ class MainActivity : AppCompatActivity() {
     /** 面板展开时覆盖卡片区的天蓝亮蒙版(营造面板凸起的光感) */
     private var panelGlow: View? = null
 
+    /** 启动骨架屏遮罩层:覆盖整个页面,数据加载完成后淡出移除 */
+    private var skeletonOverlay: View? = null
+
     /** 承载状态栏+卡片区的sheet,点击"+"后上移露出面板 */
     private lateinit var sheet: View
 
@@ -120,7 +124,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         /** 后端 data.json 接口地址（GET）。返回结构须与 data.json 一致 */
-        private const val CARD_API_URL = "http://192.168.2.156:4523/m1/8695853-8480549-default/data.json"
+        private const val CARD_API_URL = "http://192.168.2.156:8000/data.json?file=current.json"
     }
 
     // ─── 生命周期 ───────────────────────────────────────────────
@@ -129,9 +133,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // 默认主题(后端配置加载前先用默认深色,避免启动白屏)
-        ThemeManager.apply(LauncherConfig())
+        // 用上次快照的 config 初始化主题,避免启动瞬间闪默认深蓝再跳浅色
+        ThemeManager.apply(loadSnapshotConfigForTheme())
         applyThemeBackgrounds()
+        showSkeletonOverlay()
         appRepo = AppRepository(this)
         quickStore = QuickAppsStore(this)
         cardDataSource = ApiCardDataSource(
@@ -170,6 +175,56 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ─── Status Bar ───────────────────────────────────────────────
+
+    /**
+     * 同步读取上次联网快照的 config,用于启动时初始化主题(避免先闪默认深蓝)。
+     * 快照文件由 ApiCardDataSource 写入(getExternalFilesDir/data/last_launcher_data.json)。
+     * 文件不存在/解析失败 → 返回默认 LauncherConfig()。
+     */
+    private fun loadSnapshotConfigForTheme(): LauncherConfig {
+        return runCatching {
+            val f = File(File(getExternalFilesDir(null), "data"), "last_launcher_data.json")
+            if (!f.exists()) return@runCatching LauncherConfig()
+            com.example.tvlauncher.data.LauncherDataParser.parse(f.readText()).config
+        }.getOrNull() ?: LauncherConfig()
+    }
+
+    /**
+     * 在 root_container 最上层添加全屏遮罩(首帧绘制前调用)。
+     * 颜色策略:
+     * - 有快照配置 → 用快照主题色(与已设置的背景色一致,淡出无颜色跳变)
+     * - 无快照(首次访问) → 中性深灰 #2A2A30,避免默认深蓝 #373778 闪屏
+     */
+    private fun showSkeletonOverlay() {
+        val isFallback = ThemeManager.current == null
+            || ThemeManager.current?.screenColor.isNullOrBlank()
+        val color = if (isFallback) Color.parseColor("#2A2A30") else ThemeManager.screenColor()
+        val overlay = View(this).apply {
+            setBackgroundColor(color)
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        skeletonOverlay = overlay
+        findViewById<FrameLayout>(R.id.root_container).addView(overlay)
+    }
+
+    /**
+     * 隐藏并移除骨架屏遮罩。
+     * @param animate true=淡出(250ms,正常加载完成路径); false=立即移除(布局未就绪早退路径)
+     */
+    private fun hideSkeletonOverlay(animate: Boolean = true) {
+        val overlay = skeletonOverlay ?: return
+        skeletonOverlay = null  // 防止重复调用
+        if (animate) {
+            overlay.animate().alpha(0f).setDuration(250).withEndAction {
+                (overlay.parent as? ViewGroup)?.removeView(overlay)
+            }.start()
+        } else {
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+        }
+    }
 
     /** 创建状态栏并添加到容器（容器高度120dp由XML定义） */
     private fun setupStatusBar() {
@@ -281,16 +336,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 统一设置主背景各层为 ThemeManager.screenColor:
-     * - decorView / root_container:最底背景
-     * - main_container:关键遮罩层,必须不透明,否则底层 panel_container 会漏出来。
-     *   原来靠主题继承 main_bg 盖住,主题改透明后需显式设置。
+     * 统一设置主背景为 ThemeManager.screenColor:
+     * - decorView / root_container:最底背景(装饰层)
+     * - sheet 及其子容器(status_bar_container / main_content):背景色。
+     *   这些是"卡片区背景",随 sheet 上移移动(展开面板时背景跟随卡片),
+     *   且平时盖住底层面板。
+     * - main_container 保持透明(它只是容器,不是背景层)。
      */
     private fun applyThemeBackgrounds() {
         val color = ThemeManager.screenColor()
         window.decorView.setBackgroundColor(color)
         findViewById<View>(R.id.root_container)?.setBackgroundColor(color)
-        findViewById<View>(R.id.main_container)?.setBackgroundColor(color)
+        // sheet 本身需全宽背景(它 match_parent 1280 宽),否则展开面板时两侧 36dp
+        // 安全边距区域(子容器有 margin)会漏出底层背景。
+        findViewById<View>(R.id.sheet)?.setBackgroundColor(color)
+        findViewById<View>(R.id.status_bar_container)?.setBackgroundColor(color)
+        findViewById<View>(R.id.main_content)?.setBackgroundColor(color)
+        findViewById<View>(R.id.quick_bar_container)?.setBackgroundColor(color)
     }
 
     /** 根据当前主题色板重建面板竖向渐变背景，供初始化和主题变化时调用 */
@@ -304,12 +366,15 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /** 主题变化后统一刷新受影响的 UI：面板渐变 + 快捷栏 */
+    /** 主题变化后统一刷新受影响的 UI：面板渐变 + 快捷栏 + 卡片占位背景 */
     private fun refreshThemeColors() {
         // 重建面板渐变
         setupPanelBackground()
         // 快捷栏重建以刷新取色
         quickBar.refresh()
+        // 刷新卡片占位背景(仅未加载图片的卡片,避免深色占位残留)
+        iviCard.refreshPlaceholderIfEmpty()
+        cardViews.forEach { it.refreshPlaceholderIfEmpty() }
     }
 
     /**
@@ -620,6 +685,7 @@ class MainActivity : AppCompatActivity() {
 
             // 如果高度无效（布局未完成），跳过背景裁剪
             if (contentHeight <= 0 || iviW <= 0 || rightW <= 0) {
+                hideSkeletonOverlay(animate = false)  // 立即移除,避免骨架屏卡死
                 return@post
             }
 
@@ -630,17 +696,21 @@ class MainActivity : AppCompatActivity() {
                 }
                 // 解析成功但无任何有效卡片(如返回 {}) → 视为无数据,走离线兜底
                 val launcherData = rawData?.takeIf { hasBindableApps(it) }
+                android.util.Log.d("TVL", "raw=${rawData != null} launcherData=${launcherData != null} bindable=${rawData?.let { hasBindableApps(it) }}")
                 // 已联网(WiFi/以太网) 且 data.json 解析成功且有有效卡片 → 联网模式
                 val networkMode = isNetworkConnected() && launcherData != null
+                android.util.Log.d("TVL", "networkMode=$networkMode connected=${isNetworkConnected()}")
 
                 // 离线模式：先尝试从快照恢复上次联网内容（9 张卡缓存全部命中才用）
                 val snapshotData = if (!networkMode) {
                     withContext(Dispatchers.IO) { cardDataSource.loadLauncherDataSnapshot() }
                 } else null
+                android.util.Log.d("TVL", "snapshotData=${snapshotData != null}")
                 // 9 张卡的 URL 全部能从 Glide 磁盘缓存取出才返回 true，否则 null
                 val cachedApps: List<GroupApp?>? = if (snapshotData != null) {
                     withContext(Dispatchers.IO) { loadCachedCardApps(snapshotData) }
                 } else null
+                android.util.Log.d("TVL", "cachedApps=${cachedApps != null}")
 
                 // 离线且缓存不齐 → 裁剪本地背景图兜底
                 val cutter = withContext(Dispatchers.IO) {
@@ -695,6 +765,8 @@ class MainActivity : AppCompatActivity() {
 
                     // 设置D-pad焦点导航
                     setupFocusNavigation()
+                    // 所有加载路径(缓存/图块/联网)在此汇合,淡出骨架屏
+                    hideSkeletonOverlay()
                 }
             }
         }
@@ -979,5 +1051,8 @@ class MainActivity : AppCompatActivity() {
         // 释放背景图内存
         backgroundCutter?.recycle()
         if (::appUpdater.isInitialized) appUpdater.cleanup()
+        // 安全网:协程取消时骨架屏可能未移除,兜底清理
+        skeletonOverlay?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        skeletonOverlay = null
     }
 }

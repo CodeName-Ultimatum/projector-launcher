@@ -123,6 +123,16 @@ class LauncherCardView @JvmOverloads constructor(
         contentView.background = bgDrawable
     }
 
+    /**
+     * 主题变化后刷新占位背景(仅当卡片背景还是纯色占位,未被图片覆盖时)。
+     * 卡片占位色在构造时用当时主题计算,配置异步加载后才 apply → 需刷新。
+     */
+    fun refreshPlaceholderIfEmpty() {
+        if (contentView.background is android.graphics.drawable.ColorDrawable) {
+            contentView.setBackgroundColor(ThemeManager.palette().quickBarBg)
+        }
+    }
+
     /** 使用 Glide 加载整卡图片到卡片背景,替代背景图块 */
     fun setCardImageUrl(url: String) {
         Glide.with(context)

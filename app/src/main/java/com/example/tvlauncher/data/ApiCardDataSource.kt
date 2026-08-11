@@ -68,7 +68,11 @@ open class ApiCardDataSource(
             val lastUtc = channelStore.lastUtc
             if (data.utc == null || data.utc > lastUtc) {
                 channelStore.lastUtc = data.utc ?: lastUtc
-                try { snapshotFile.writeText(json) } catch (e: Exception) { /* 写失败不影响本次使用 */ }
+                try {
+                    // 父目录可能不存在,先创建再写,否则 writeText 抛 FileNotFoundException
+                    snapshotFile.parentFile?.mkdirs()
+                    snapshotFile.writeText(json)
+                } catch (e: Exception) { /* 写失败不影响本次使用 */ }
                 data
             } else {
                 null // 配置未变，由调用方走快照缓存路径
