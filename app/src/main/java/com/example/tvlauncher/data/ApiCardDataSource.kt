@@ -19,48 +19,34 @@ import java.net.URL
  * 改为
  *   cardDataSource = ApiCardDataSource(this, "https://你的域名/path/data.json")
  */
-class ApiCardDataSource(
-    private val context: Context,
+open class ApiCardDataSource(
+    private val context: Context?,
     private val apiUrl: String,
+    private val storage: LongStorage,
     private val connectTimeoutMs: Int = 5000,
     private val readTimeoutMs: Int = 8000
 ) : CardDataSource {
 
+    /** 保留旧构造签名兼容现有调用方（无 storage 注入时自动使用 PrefsLongStorage） */
+    constructor(context: Context, apiUrl: String, connectTimeoutMs: Int = 5000, readTimeoutMs: Int = 8000) : this(
+        context = context,
+        apiUrl = apiUrl,
+        storage = PrefsLongStorage(context),
+        connectTimeoutMs = connectTimeoutMs,
+        readTimeoutMs = readTimeoutMs
+    )
+
+    private val channelStore = ChannelStore(storage)
+
     /** 快照仍写本地，供离线时恢复上次联网内容（与 FileCardDataSource 同目录） */
     private val snapshotFile: File
-        get() = File(File(context.getExternalFilesDir(null), "data"), "last_launcher_data.json")
+        get() = File(File(context?.getExternalFilesDir(null), "data"), "last_launcher_data.json")
 
-    override suspend fun getCardConfigs(): List<CardConfig> = emptyList()
-
-    override suspend fun getLauncherConfig(): LauncherConfig {
-        return loadLauncherData()?.config ?: LauncherConfig()
-    }
-
-    override suspend fun loadLauncherData(): LauncherData? = withContext(Dispatchers.IO) {
-        val json = httpGet(apiUrl) ?: return@withContext null
-        try {
-            LauncherDataParser.parse(json).also {
-                // 解析成功即写快照，离线时恢复上次联网内容
-                try { snapshotFile.writeText(json) } catch (e: Exception) { /* 写失败不影响本次使用 */ }
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    override suspend fun loadLauncherDataSnapshot(): LauncherData? {
-        return try {
-            LauncherDataParser.parse(snapshotFile.readText())
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /** 同步 GET 请求，返回响应体字符串；任何失败返回 null。须在 IO 线程调用。 */
-    private fun httpGet(urlStr: String): String? {
+    /** 可被单测覆写的网络获取 */
+    open fun fetch(url: String): String? {
         var conn: HttpURLConnection? = null
         return try {
-            conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = connectTimeoutMs
                 readTimeout = readTimeoutMs
@@ -72,6 +58,40 @@ class ApiCardDataSource(
             null
         } finally {
             conn?.disconnect()
+        }
+    }
+
+    override suspend fun getCardConfigs(): List<CardConfig> = emptyList()
+
+    override suspend fun getLauncherConfig(): LauncherConfig {
+        return loadLauncherData()?.config ?: LauncherConfig()
+    }
+
+    override suspend fun loadLauncherData(): LauncherData? = withContext(Dispatchers.IO) {
+        val json = fetch(apiUrl) ?: return@withContext null
+        try {
+            val data = LauncherDataParser.parse(json)
+            // channel 比对：不是发给本设备的配置直接忽略
+            if (data.channel != ChannelStore.CHANNEL) return@withContext null
+            // utc 门控：仅当新配置（utc > lastUtc）才应用并更新 lastUtc
+            val lastUtc = channelStore.lastUtc
+            if (data.utc == null || data.utc > lastUtc) {
+                channelStore.lastUtc = data.utc ?: lastUtc
+                try { snapshotFile.writeText(json) } catch (e: Exception) { /* 写失败不影响本次使用 */ }
+                data
+            } else {
+                null // 配置未变，由调用方走快照缓存路径
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    override suspend fun loadLauncherDataSnapshot(): LauncherData? {
+        return try {
+            LauncherDataParser.parse(snapshotFile.readText())
+        } catch (e: Exception) {
+            null
         }
     }
 }
