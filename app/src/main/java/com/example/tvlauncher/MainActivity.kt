@@ -966,6 +966,6 @@ class MainActivity : AppCompatActivity() {
         statusBar.stopListening()
         // 释放背景图内存
         backgroundCutter?.recycle()
-        if (::appUpdater.isInitialized) appUpdater.cancelDownloads()
+        if (::appUpdater.isInitialized) appUpdater.cleanup()
     }
 }

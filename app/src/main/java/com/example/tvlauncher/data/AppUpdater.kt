@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
-import android.os.Environment
-import android.widget.Toast
 import androidx.core.content.FileProvider
 import java.io.File
 
@@ -34,7 +32,8 @@ class AppUpdater(private val context: Context) {
     /** 下载并安装单个应用 APK；apkUrl 为空则跳过 */
     fun downloadAndInstall(app: GroupApp) {
         val url = app.apkUrl ?: return
-        val dir = File(context.getExternalCacheDir(), "apk").apply { mkdirs() }
+        val cacheDir = context.getExternalCacheDir() ?: return
+        val dir = File(cacheDir, "apk").apply { mkdirs() }
         // 包名转安全文件名
         val fileName = "${app.packageName ?: "app"}_${System.currentTimeMillis()}.apk"
         val destFile = File(dir, fileName)
@@ -45,7 +44,11 @@ class AppUpdater(private val context: Context) {
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             setDestinationUri(Uri.fromFile(destFile))
         }
-        val id = downloadManager.enqueue(request)
+        val id = try {
+            downloadManager.enqueue(request)
+        } catch (e: Exception) {
+            return
+        }
         downloadIds.add(id)
         pendingApks[id] = destFile.absolutePath
         registerReceiver()
@@ -74,8 +77,13 @@ class AppUpdater(private val context: Context) {
         receiverRegistered = true
     }
 
-    /** onDestroy 调用，注销广播避免泄漏 */
-    fun cancelDownloads() {
+    /** onDestroy 调用，取消下载并注销广播避免泄漏 */
+    fun cleanup() {
+        for (id in downloadIds) {
+            downloadManager.remove(id)
+            pendingApks.remove(id)
+        }
+        downloadIds.clear()
         if (receiverRegistered) {
             try {
                 context.unregisterReceiver(completeReceiver)
