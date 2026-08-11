@@ -133,13 +133,13 @@ class QuickBarView @JvmOverloads constructor(
 
         // 正常状态：蓝底透明态；聚焦状态：蓝底 + 白色描边
         val normalBg = GradientDrawable().apply {
-            setColor(Color.parseColor("#FF354D96"))
+            setColor(ThemeManager.palette().quickBarBg)
             cornerRadius = 0f
         }
         val focusedBg = GradientDrawable().apply {
-            setColor(Color.parseColor("#FF354D96"))
+            setColor(ThemeManager.palette().quickBarBg)
             cornerRadius = 0f
-            setStroke(context.dpToPx(2), Color.WHITE)
+            setStroke(context.dpToPx(2), ThemeManager.palette().cardFocusBorder)
         }
         item.background = normalBg
 
@@ -214,13 +214,13 @@ class QuickBarView @JvmOverloads constructor(
 
         // 蓝底 + 聚焦白框（与应用项一致）
         val normalBg = GradientDrawable().apply {
-            setColor(Color.parseColor("#FF354D96"))
+            setColor(ThemeManager.palette().quickBarBg)
             cornerRadius = 0f
         }
         val focusedBg = GradientDrawable().apply {
-            setColor(Color.parseColor("#FF354D96"))
+            setColor(ThemeManager.palette().quickBarBg)
             cornerRadius = 0f
-            setStroke(context.dpToPx(2), Color.WHITE)
+            setStroke(context.dpToPx(2), ThemeManager.palette().cardFocusBorder)
         }
         addBtn.background = normalBg
 

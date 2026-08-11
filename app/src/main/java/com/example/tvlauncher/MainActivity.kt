@@ -213,15 +213,8 @@ class MainActivity : AppCompatActivity() {
         panelContainer = findViewById<View>(R.id.panel_container)
         // 面板容器抬升 Z 轴时不画自己的矩形阴影(背景不透明,否则会投出被快捷栏裁剪的原生阴影)
         setContainerNoShadow(panelContainer)
-        // 面板底色:上亮下暗垂直渐变,呼应面板从卡片区下方浮起的受光感
-        // 与 main_bg(#373778) 同色系:顶亮蓝紫 → 底深蓝紫
-        panelContainer.background = android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(
-                Color.parseColor("#4A4A9C"),  // 顶:亮蓝紫
-                Color.parseColor("#2B2B5C")   // 底:深蓝紫
-            )
-        )
+        // 面板底色:上亮下暗垂直渐变,色值跟随主题
+        setupPanelBackground()
         panelView = AppPanelView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -281,6 +274,25 @@ class MainActivity : AppCompatActivity() {
             }
             panelView.setApps(apps)
         }
+    }
+
+    /** 根据当前主题色板重建面板竖向渐变背景，供初始化和主题变化时调用 */
+    private fun setupPanelBackground() {
+        panelContainer.background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(
+                ThemeManager.palette().panelGradientTop,
+                ThemeManager.palette().panelGradientBottom
+            )
+        )
+    }
+
+    /** 主题变化后统一刷新受影响的 UI：面板渐变 + 快捷栏 */
+    private fun refreshThemeColors() {
+        // 重建面板渐变
+        setupPanelBackground()
+        // 快捷栏重建以刷新取色
+        quickBar.refresh()
     }
 
     /**
@@ -637,6 +649,7 @@ class MainActivity : AppCompatActivity() {
                     if (cachedApps != null) {
                         snapshotData?.config?.let { ThemeManager.apply(it) }
                         window.decorView.setBackgroundColor(ThemeManager.screenColor())
+                        refreshThemeColors()
                         snapshotData?.logoUrl?.let { statusBar.setLogoUrl(it) }
                         bindCachedCards(cachedApps)
                     } else if (cutter != null) {
@@ -657,6 +670,7 @@ class MainActivity : AppCompatActivity() {
                         // 应用后端主题(背景色 + lightMode);快照缓存路径在离线分支下也用快照 config 应用一次
                         launcherData.config?.let { ThemeManager.apply(it) }
                         window.decorView.setBackgroundColor(ThemeManager.screenColor())
+                        refreshThemeColors()
                         launcherData.logoUrl?.let { statusBar.setLogoUrl(it) }
                         bindCardsFromLauncherData(launcherData)
                         checkAppUpdates(launcherData)

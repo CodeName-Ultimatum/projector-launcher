@@ -64,8 +64,8 @@ class LauncherCardView @JvmOverloads constructor(
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             val border = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                // 3dp 纯白描边，紧贴卡片边缘
-                setStroke(context.dpToPx(3), Color.WHITE)
+                // 3dp 描边，紧贴卡片边缘，颜色跟随主题
+                setStroke(context.dpToPx(3), ThemeManager.palette().cardFocusBorder)
             }
             background = border
             visibility = View.INVISIBLE
