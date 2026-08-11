@@ -92,7 +92,7 @@
                 android:layout_marginLeft="36dp"
                 android:layout_marginRight="36dp"
                 android:layout_marginTop="0dp"
-                android:layout_marginBottom="0dp"
+                android:layout_marginBottom="12dp"
                 android:clipChildren="false"
                 android:clipToPadding="false"
                 android:orientation="horizontal">
@@ -150,22 +150,19 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 卡片区与快捷栏之间的 12dp 间距 -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="12dp" />
-
         <!--
             快捷栏容器 — 固定在 main_container 底部
             实际内容由 QuickBarView 代码动态添加
             高度固定86dp，水平滚动，左右 36dp 安全边距
+            顶部 12dp 边距(与卡片区底部 12dp 合计 24dp 间距)
         -->
         <FrameLayout
             android:id="@+id/quick_bar_container"
             android:layout_width="match_parent"
             android:layout_height="86dp"
             android:layout_marginLeft="36dp"
-            android:layout_marginRight="36dp" />
+            android:layout_marginRight="36dp"
+            android:layout_marginTop="12dp" />
 
     </LinearLayout>
 

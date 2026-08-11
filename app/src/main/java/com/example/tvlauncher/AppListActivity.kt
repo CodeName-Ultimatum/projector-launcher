@@ -16,6 +16,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.tvlauncher.data.AppRepository
+import com.example.tvlauncher.ui.ThemeManager
 import com.example.tvlauncher.util.dpToPx
 import com.example.tvlauncher.util.showDarkToast
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +42,7 @@ class AppListActivity : AppCompatActivity() {
     private val squareSize by lazy { dpToPx(110) }
     private val gap by lazy { dpToPx(8) }
     private val perRow = 6
-    private val panelColor = 0xFF3E6BC8.toInt()
+    private val panelColor by lazy { ThemeManager.palette().quickBarBg }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,20 +51,22 @@ class AppListActivity : AppCompatActivity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF00009B.toInt())
+            // 背景跟随主题(与主页一致),不再硬编码深蓝
+            setBackgroundColor(ThemeManager.screenColor())
         }
 
         // Toolbar（透明背景，融入根布局）
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8))
+            // 只留左右 padding;上下 0,让标题在完整 48dp 高度里 gravity=CENTER 真正垂直居中
+            setPadding(dpToPx(16), 0, dpToPx(16), 0)
         }
 
         val title = TextView(this).apply {
             text = "已安装应用"
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 18f
+            setTextColor(ThemeManager.palette().statusBarTextColor)
+            textSize = 24f
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
@@ -73,7 +76,8 @@ class AppListActivity : AppCompatActivity() {
 
         root.addView(
             toolbar,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(48))
+            // 高度 60dp:原 48dp + 网格顶部让出的 12dp,让标题在更高容器里上下居中
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(60))
         )
 
         // 垂直滚动容器。关闭裁剪让聚焦放大不被截断；不撑满视口，内容从顶部开始
@@ -89,7 +93,8 @@ class AppListActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
             clipToPadding = false
-            setPadding(0, dpToPx(12), 0, dpToPx(12))
+            // 顶部无内边距:节省空间给标题容器,让标题上下居中;底部保留
+            setPadding(0, 0, 0, dpToPx(12))
         }
 
         scrollView.addView(
@@ -107,8 +112,8 @@ class AppListActivity : AppCompatActivity() {
             setBackgroundColor(Color.TRANSPARENT)
             clipChildren = false
             clipToPadding = false
-            // 左边距 36dp 对齐主界面安全边距(防过扫描),右侧保留小边距
-            setPadding(dpToPx(36), dpToPx(12), dpToPx(12), dpToPx(12))
+            // 左边距 36dp 对齐主界面安全边距(防过扫描),右侧保留小边距;顶部无内边距
+            setPadding(dpToPx(36), 0, dpToPx(12), dpToPx(12))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT

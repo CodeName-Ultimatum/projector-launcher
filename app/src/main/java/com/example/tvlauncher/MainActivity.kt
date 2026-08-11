@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         /** 后端 data.json 接口地址（GET）。返回结构须与 data.json 一致 */
-        private const val CARD_API_URL = "http://192.168.2.156:8000/data.json?file=current.json"
+        private const val CARD_API_URL = "http://192.168.2.156:4523/m1/8695853-8480549-default/data.json"
     }
 
     // ─── 生命周期 ───────────────────────────────────────────────
@@ -690,32 +690,21 @@ class MainActivity : AppCompatActivity() {
             }
 
             lifecycleScope.launch {
-                // 读取 data/data.json 并解析（IO 线程,readText 阻塞）
-                val rawData = withContext(Dispatchers.IO) {
-                    cardDataSource.loadLauncherData()
+                val tLaunch = System.currentTimeMillis()
+                // ── 1. 先读快照/缓存/兜底(秒开,不依赖网络) ──
+                val snapshotData = withContext(Dispatchers.IO) {
+                    cardDataSource.loadLauncherDataSnapshot()
                 }
-                // 解析成功但无任何有效卡片(如返回 {}) → 视为无数据,走离线兜底
-                val launcherData = rawData?.takeIf { hasBindableApps(it) }
-                android.util.Log.d("TVL", "raw=${rawData != null} launcherData=${launcherData != null} bindable=${rawData?.let { hasBindableApps(it) }}")
-                // 已联网(WiFi/以太网) 且 data.json 解析成功且有有效卡片 → 联网模式
-                val networkMode = isNetworkConnected() && launcherData != null
-                android.util.Log.d("TVL", "networkMode=$networkMode connected=${isNetworkConnected()}")
-
-                // 离线模式：先尝试从快照恢复上次联网内容（9 张卡缓存全部命中才用）
-                val snapshotData = if (!networkMode) {
-                    withContext(Dispatchers.IO) { cardDataSource.loadLauncherDataSnapshot() }
-                } else null
-                android.util.Log.d("TVL", "snapshotData=${snapshotData != null}")
                 // 9 张卡的 URL 全部能从 Glide 磁盘缓存取出才返回 true，否则 null
                 val cachedApps: List<GroupApp?>? = if (snapshotData != null) {
                     withContext(Dispatchers.IO) { loadCachedCardApps(snapshotData) }
                 } else null
-                android.util.Log.d("TVL", "cachedApps=${cachedApps != null}")
+                android.util.Log.d("TVL", "快照+缓存探测: ${System.currentTimeMillis() - tLaunch}ms snapshot=${snapshotData != null} cached=${cachedApps != null}")
 
-                // 离线且缓存不齐 → 裁剪本地背景图兜底
+                // 无快照 → 裁剪本地背景图兜底
                 val cutter = withContext(Dispatchers.IO) {
-                    if (networkMode || cachedApps != null) {
-                        null  // 联网或已从缓存恢复，不裁剪本地背景图
+                    if (cachedApps != null) {
+                        null  // 已从缓存恢复
                     } else {
                         try {
                             val src = BitmapFactory.decodeResource(resources, R.drawable.bg_full)
@@ -731,20 +720,19 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                // ── 2. 渲染快照/兜底,马上可见 ──
                 withContext(Dispatchers.Main) {
-                    // 离线且缓存齐全：恢复上次联网的卡片内容
                     if (cachedApps != null) {
+                        // 恢复上次联网的卡片内容
                         snapshotData?.config?.let { ThemeManager.apply(it) }
                         applyThemeBackgrounds()
                         refreshThemeColors()
                         snapshotData?.logoUrl?.let { statusBar.setLogoUrl(it) }
                         bindCachedCards(cachedApps)
                     } else if (cutter != null) {
-                        // 离线兜底：本地背景图块
+                        // 兜底:本地背景图块
                         backgroundCutter = cutter
-                        // IVI面板背景（图块0）
                         iviCard.setCardBackground(cutter.getTile(0))
-                        // 右侧8张卡片背景（图块1-8 → cardViews[0-7]）
                         for (i in 1..8) {
                             val cardIdx = i - 1
                             if (cardIdx < cardViews.size) {
@@ -752,9 +740,20 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    // 联网模式：按 data.json 绑定卡片
-                    if (networkMode && launcherData != null) {
-                        // 应用后端主题(背景色 + lightMode);快照缓存路径在离线分支下也用快照 config 应用一次
+                    setupFocusNavigation()
+                    hideSkeletonOverlay()  // 秒开:首屏不等网络
+                    android.util.Log.d("TVL", "首屏渲染(骨架屏消失): ${System.currentTimeMillis() - tLaunch}ms")
+                }
+
+                // ── 3. 后台并发拉后端,utc 变化才刷新(不阻塞首屏) ──
+                val rawData = withContext(Dispatchers.IO) {
+                    cardDataSource.loadLauncherData()
+                }
+                val launcherData = rawData?.takeIf { hasBindableApps(it) }
+                android.util.Log.d("TVL", "后台拉后端: ${System.currentTimeMillis() - tLaunch}ms applied=${launcherData != null}")
+                if (launcherData != null) {
+                    withContext(Dispatchers.Main) {
+                        // 应用后端主题 + 刷新卡片(utc 相同则 loadLauncherData 返回 null,不重绑)
                         launcherData.config?.let { ThemeManager.apply(it) }
                         applyThemeBackgrounds()
                         refreshThemeColors()
@@ -762,11 +761,6 @@ class MainActivity : AppCompatActivity() {
                         bindCardsFromLauncherData(launcherData)
                         checkAppUpdates(launcherData)
                     }
-
-                    // 设置D-pad焦点导航
-                    setupFocusNavigation()
-                    // 所有加载路径(缓存/图块/联网)在此汇合,淡出骨架屏
-                    hideSkeletonOverlay()
                 }
             }
         }
