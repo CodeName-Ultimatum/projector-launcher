@@ -18,6 +18,7 @@ import com.example.tvlauncher.data.AppRepository
 import com.example.tvlauncher.data.QuickAppsStore
 import com.example.tvlauncher.util.dpToPx
 import com.example.tvlauncher.util.setSafeOnClickListener
+import com.example.tvlauncher.util.showDarkToast
 
 /**
  * 应用面板 — 常用应用添加/删除器
@@ -319,9 +320,16 @@ class AppPanelView @JvmOverloads constructor(
                 addedPackages.remove(app.packageName)
                 onToggle?.invoke(app.packageName, false)
             } else {
-                if (quickStore.addQuickApp(app.packageName)) {
-                    addedPackages.add(app.packageName)
-                    onToggle?.invoke(app.packageName, true)
+                when (quickStore.addQuickApp(app.packageName)) {
+                    QuickAppsStore.AddResult.ADDED -> {
+                        addedPackages.add(app.packageName)
+                        onToggle?.invoke(app.packageName, true)
+                    }
+                    QuickAppsStore.AddResult.FULL -> {
+                        // 已达上限:拒绝添加并提示,不淘汰任何已固定的应用
+                        context.showDarkToast("快捷栏已满（最多 ${quickStore.maxApps} 个），请先移除一个应用")
+                    }
+                    QuickAppsStore.AddResult.ALREADY_EXISTS -> Unit // 面板已按 contains 排除此情况
                 }
             }
             // 仅刷新当前格子(勾选角标),不重绑全部,焦点保持在当前格子
